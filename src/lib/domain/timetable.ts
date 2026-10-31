@@ -62,6 +62,28 @@ export function planSessionsForDay(day: ResolvedDay, versions: readonly VersionD
     }));
 }
 
+export type CourseKind = "INTEGRATED" | "THEORY_ONLY" | "PRACTICAL_ONLY" | "SPECIALIZATION";
+
+/** Which parts (theory / lab) a subject of this kind can have in the timetable and teaching assignments. */
+export function allowedComponents(kind: CourseKind): Component[] {
+  switch (kind) {
+    case "THEORY_ONLY":
+      return ["THEORY"];
+    case "PRACTICAL_ONLY":
+      return ["PRACTICAL"];
+    default:
+      return ["THEORY", "PRACTICAL"];
+  }
+}
+
+/**
+ * A timetable version may be edited only while no class has been recorded against it.
+ * Once attendance exists, changes must go into a new version so history stays exact.
+ */
+export function isVersionEditable(v: { effectiveFrom: IsoDate }, today: IsoDate, sessionsRecorded: number): boolean {
+  return v.effectiveFrom > today || sessionsRecorded === 0;
+}
+
 export interface SlotConflict {
   a: SlotDef;
   b: SlotDef;

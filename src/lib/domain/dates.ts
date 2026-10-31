@@ -44,6 +44,16 @@ export function todayIn(timezone = "Asia/Kolkata", now = new Date()): IsoDate {
   return new Intl.DateTimeFormat("en-CA", { timeZone: timezone, year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
 }
 
+/** "Saturday, 31 October 2026" — formatted in UTC so the server timezone can't shift the day. */
+export function formatDateLong(date: IsoDate): string {
+  return toUtc(date).toLocaleDateString("en-IN", { timeZone: "UTC", weekday: "long", day: "numeric", month: "long", year: "numeric" });
+}
+
+/** "31 Oct 2026". */
+export function formatDateShort(date: IsoDate): string {
+  return toUtc(date).toLocaleDateString("en-IN", { timeZone: "UTC", day: "numeric", month: "short", year: "numeric" });
+}
+
 /** Monday of the week containing `date`. */
 export function weekStart(date: IsoDate): IsoDate {
   return addDays(date, 1 - isoWeekday(date));

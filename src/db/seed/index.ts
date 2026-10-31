@@ -23,10 +23,12 @@ import { sessionAppliesTo, type Batch, type MembershipFact } from "@/lib/domain/
 import { formatRegNo } from "@/lib/domain/regNo";
 import { findSlotConflicts, planSessionsForDay, type SlotDef, type VersionDef } from "@/lib/domain/timetable";
 import { DEPARTMENTS, FIRST_NAMES_F, FIRST_NAMES_M, STAFF_TITLES, SUBJECTS, SURNAMES, type DeptCode, type SubjectDef } from "./catalog";
+import { hashPassword } from "@/lib/auth/password";
 import { createRng } from "./random";
 import { gridForSemester, parseGrid, type GridSlot } from "./timetables";
 
 const RNG_SEED = 2026_27;
+const DEMO_PASSWORD = process.env.SEED_STAFF_PASSWORD || "meidemo2026";
 const COLLEGE_CODE = "204";
 const TERM_START: IsoDate = "2026-08-17";
 const TERM_END: IsoDate = "2026-12-31";
@@ -231,18 +233,25 @@ async function seed(tx: Tx, until: IsoDate) {
 
   const principal = newStaff("OFFICE", null, "Principal");
   const admin = newStaff("OFFICE", null, "Office Administrator");
+  // Admin and principal get the first phone numbers so demo logins are easy to remember.
+  const orderedStaff = [admin, principal, ...staffDrafts.filter((s) => s !== admin && s !== principal)];
+  // Same demo password for everyone (one hash, computed once). Real staff get temporary passwords from the admin.
+  const demoHash = await hashPassword(DEMO_PASSWORD);
   const staffRows = await tx
     .insert(t.staff)
     .values(
-      staffDrafts.map((s, i) => ({
+      orderedStaff.map((s, i) => ({
         name: s.name,
         phone: `+917000${String(i + 1).padStart(6, "0")}`,
         departmentId: s.deptCode ? deptId.get(s.deptCode)! : null,
         designation: s.designation,
+        passwordHash: demoHash,
+        mustChangePassword: false,
       })),
     )
     .returning();
-  const staffId = new Map(staffDrafts.map((s, i) => [s, staffRows[i].id]));
+  const staffId = new Map(orderedStaff.map((s, i) => [s, staffRows[i].id]));
+  const staffPhone = new Map(orderedStaff.map((s, i) => [s, staffRows[i].phone]));
 
   await tx.insert(t.teachingAssignment).values(
     assignmentDrafts.map((a) => ({ offeringId: a.offeringId, component: a.component, batchScope: "ALL" as const, staffId: staffId.get(a.staff)! })),
@@ -595,17 +604,31 @@ async function seed(tx: Tx, until: IsoDate) {
     reason: "Dummy data for demo",
   });
 
+  const csPool = pools.get("CS")!;
+  const login = (role: string, s: StaffDraft) => ({ role, name: s.name, phone: staffPhone.get(s)!.replace("+91", "") });
+  const logins = [
+    login("Admin", admin),
+    login("Principal", principal),
+    login("HOD, CS", csPool[0]),
+    login("Class teacher, CS Sem 3 (also faculty)", csPool[1 + SEMESTERS.indexOf(3)]),
+    login("Faculty, CS", csPool[csPool.length - 1]),
+    login("Faculty, Maths (common pool)", pools.get("MATHS")![0]),
+  ];
+
   return {
-    departments: deptRows.length,
-    classes: classes.length,
-    staff: staffRows.length,
-    students: studentRows.length,
-    parents: parentRows.length,
-    sessions: sessionCount,
-    attendanceRecords: recordCount,
-    leaves: leaveRows.length,
-    marks: markCount,
-    until,
+    summary: {
+      departments: deptRows.length,
+      classes: classes.length,
+      staff: staffRows.length,
+      students: studentRows.length,
+      parents: parentRows.length,
+      sessions: sessionCount,
+      attendanceRecords: recordCount,
+      leaves: leaveRows.length,
+      marks: markCount,
+      until,
+    },
+    logins,
   };
 }
 
@@ -628,9 +651,11 @@ async function main() {
       await wipe(db);
     }
     const started = Date.now();
-    const summary = await db.transaction((tx) => seed(tx, until));
+    const { summary, logins } = await db.transaction((tx) => seed(tx, until));
     console.log(`Seeded in ${((Date.now() - started) / 1000).toFixed(1)}s`);
     console.table(summary);
+    console.log(`Demo logins (password for all: value of SEED_STAFF_PASSWORD in .env):`);
+    console.table(logins);
   } finally {
     await pool.end();
   }

@@ -6,7 +6,20 @@ Full design, rules and open questions: **[docs/PLAN.md](docs/PLAN.md)**. Read it
 
 ## Status
 
-Prototype with dummy data. Phase 0–1 done: database schema, rule logic with tests, dummy data. Next: logins and screens.
+Prototype with dummy data. Phases 0–2 done: database, rule logic with tests, dummy data, staff sign-in with roles, and setup screens (staff, classes, subjects, teachers, timetables, calendar, students and parent numbers, settings). Next: marking attendance.
+
+## Demo sign-in (dummy data only)
+
+Password for every dummy staff account: the `SEED_STAFF_PASSWORD` value in `.env` (default in `.env.example`). `npm run db:reset` prints this table:
+
+| Role | Mobile |
+|---|---|
+| Admin | 70000 00001 |
+| Principal | 70000 00002 |
+| HOD, CS | 70000 00010 |
+| Class teacher CS Sem 3 (+ faculty) | 70000 00012 |
+| Faculty, CS | 70000 00059 |
+| Faculty, Maths (common pool) | 70000 00052 |
 
 ## Run it locally
 
@@ -43,7 +56,11 @@ drizzle/                  SQL migrations (generated — never edit by hand once 
 src/db/schema.ts          Every table, with database-level checks
 src/db/seed/              Dummy data (CS timetables are the official 2026-27 ones)
 src/lib/domain/           Pure rule logic: attendance %, calendar, timetable, register numbers, phones
-src/app/                  Next.js pages
+src/lib/auth/             Password hashing and the permission rules (who may do what)
+src/server/               Server-only code: sessions, current user, form-action wrapper, audit log, queries
+src/components/           Shared UI (ui.tsx) and <ActionForm> for every form
+src/app/(app)/            Signed-in pages; each folder has page.tsx and actions.ts
+src/proxy.ts              Sends signed-out visitors to /login (real checks happen on the server)
 tests/db/                 Tests proving the database rejects bad data
 ```
 
@@ -53,6 +70,8 @@ tests/db/                 Tests proving the database rejects bad data
 2. **Rule change** (attendance %, eligibility, calendar) → change `src/lib/domain/*` and its `.test.ts` together.
 3. Thresholds, periods, leave policy, etc. are **data** (`college_settings`, `period`, `leave_policy`), not code.
 4. `npm test`, `npm run typecheck` and `npm run lint` must pass before merging. CI runs them on every push.
+5. **Every Server Action** uses `formAction(schema, handler)` and checks permission with `ensure(can…(me.actor, …))` before touching data, then writes an `audit(...)` row in the same transaction. Hiding a button is never protection.
+6. When a raw SQL query returns an array of an enum column, cast it to `text[]` (node-postgres can't parse enum arrays).
 
 ## Dummy data
 

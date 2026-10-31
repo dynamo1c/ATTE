@@ -607,6 +607,38 @@ export const mark = pgTable(
 );
 
 // ---------------------------------------------------------------------------
+// Auth
+// ---------------------------------------------------------------------------
+
+/** Staff login sessions. The cookie holds a random token; only its SHA-256 hash is stored. */
+export const staffSession = pgTable(
+  "staff_session",
+  {
+    tokenHash: text("token_hash").primaryKey(),
+    staffId: integer("staff_id").notNull().references(() => staff.id),
+    createdAt: createdAt(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow(),
+    userAgent: text("user_agent"),
+    ip: text("ip"),
+  },
+  (t) => [index("staff_session_staff_idx").on(t.staffId), index("staff_session_expires_idx").on(t.expiresAt)],
+);
+
+/** Every login attempt, for rate limiting and the security log. */
+export const loginAttempt = pgTable(
+  "login_attempt",
+  {
+    id: bigint("id", { mode: "number" }).primaryKey().generatedAlwaysAsIdentity(),
+    phone: text("phone").notNull(),
+    ip: text("ip"),
+    success: boolean("success").notNull(),
+    at: timestamp("at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("login_attempt_phone_at_idx").on(t.phone, t.at), index("login_attempt_ip_at_idx").on(t.ip, t.at)],
+);
+
+// ---------------------------------------------------------------------------
 // Notifications (outbox) & audit
 // ---------------------------------------------------------------------------
 

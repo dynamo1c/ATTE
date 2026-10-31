@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { resolveDay } from "./calendar";
-import { activeVersion, findSlotConflicts, planSessionsForDay, type SlotDef, type VersionDef } from "./timetable";
+import { activeVersion, allowedComponents, findSlotConflicts, isVersionEditable, planSessionsForDay, type SlotDef, type VersionDef } from "./timetable";
 
 const slot = (s: Partial<SlotDef> & Pick<SlotDef, "id" | "weekday" | "startPeriod" | "endPeriod">): SlotDef => ({
   kind: "CLASS",
@@ -60,6 +60,20 @@ describe("planSessionsForDay", () => {
     const v2: VersionDef = { id: 2, effectiveFrom: "2026-10-27", slots: [slot({ id: 9, weekday: 2, startPeriod: 3, endPeriod: 3 })] };
     expect(planSessionsForDay(resolveDay("2026-10-20", [], scope), [v1, v2]).map((s) => s.slotId)).toEqual([4]);
     expect(planSessionsForDay(resolveDay("2026-10-27", [], scope), [v1, v2]).map((s) => s.slotId)).toEqual([9]);
+  });
+});
+
+describe("allowedComponents / isVersionEditable", () => {
+  it("limits parts by subject kind", () => {
+    expect(allowedComponents("THEORY_ONLY")).toEqual(["THEORY"]);
+    expect(allowedComponents("PRACTICAL_ONLY")).toEqual(["PRACTICAL"]);
+    expect(allowedComponents("INTEGRATED")).toEqual(["THEORY", "PRACTICAL"]);
+  });
+
+  it("locks a version once classes are recorded, unless it starts in the future", () => {
+    expect(isVersionEditable({ effectiveFrom: "2026-11-02" }, "2026-11-01", 0)).toBe(true);
+    expect(isVersionEditable({ effectiveFrom: "2026-08-17" }, "2026-11-01", 0)).toBe(true);
+    expect(isVersionEditable({ effectiveFrom: "2026-08-17" }, "2026-11-01", 120)).toBe(false);
   });
 });
 

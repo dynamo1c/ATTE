@@ -308,7 +308,7 @@ PDFs are rendered from HTML with headless Chromium so Kannada text shapes correc
 | Database | **PostgreSQL** | Strong constraints, transactions, reliable |
 | DB access | Drizzle ORM + SQL migrations | Typed, close to SQL, readable migrations |
 | Validation | Zod | Same schema checks inputs on client and server |
-| Auth | Better Auth (password + phone OTP plugins) | Sessions in DB, OTP ready later |
+| Auth | Own: scrypt passwords + DB sessions (see Progress) | No extra framework; parent OTP added in phase 7 |
 | Background jobs | pg-boss (queue + cron inside PostgreSQL) | No Redis; retries, schedules (weekly summary, session generation) |
 | i18n | next-intl (English / Kannada) | UI and messages in both languages |
 | PDF | HTML → headless Chromium (Playwright) | Correct Kannada rendering |
@@ -339,6 +339,15 @@ Alternative considered: **Django + HTMX** (Python). Equally solid, comes with a 
 Demo-ready after phases 0–4 + 6 (mock + test number).
 
 **Progress:** Phase 0 and 1 done (2026-10-31). Schema with DB-level checks, pure rule logic (attendance %, calendar, timetable, reg no, phone) with 62 unit tests, 14 database-constraint tests, deterministic dummy data seed, CI workflow, status page.
+
+**Progress:** Phase 2 done (2026-11-01). Decisions taken while building it:
+
+- **Own auth instead of Better Auth.** Staff already live in our `staff` table. Passwords use Node's built-in scrypt; sessions are random tokens stored only as SHA-256 hashes, 30-day cookies. Login is rate-limited (5 failures per phone / 30 per IP in 15 min) and always runs one hash check so timing doesn't reveal which phones exist. New staff and resets get a one-time temporary password and must change it at first sign-in. Fewer moving parts for a lecturer to maintain.
+- **Next.js Cache Components turned off.** Every page is per-user and attendance must be live; pages render on each request.
+- **Timetable versions lock** once any class is recorded against them. Changes go into a new version starting tomorrow or later. Clashes are blocked for the same batch, and for the same teacher across classes.
+- **Calendar holiday/exam on a day with recorded attendance** needs explicit confirmation; those classes become CANCELLED (marks kept). Deleting the entry restores them.
+- **Batch changes** start today or later (backdating would re-assign already-marked classes).
+- Every change writes an audit log row in the same transaction.
 
 Assumptions made while building (change when the college answers):
 
