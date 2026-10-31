@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      db:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: mei
+          POSTGRES_PASSWORD: mei_dev_password
+          POSTGRES_DB: mei_attendance
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U mei -d mei_attendance"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+    env:
+      DATABASE_URL: postgres://mei:mei_dev_password@localhost:5432/mei_attendance
+      # Fixed date so CI data is identical on every run.
+      SEED_UNTIL: "2026-10-31"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - name: Schema matches migrations
+        run: npx drizzle-kit check
+      - run: npm run db:migrate
+      - run: npm run db:seed
+      - run: npm test
+      - run: npm run build

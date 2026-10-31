@@ -1,0 +1,24 @@
+# Local development database.
+# Start: docker compose up -d     Stop: docker compose down     Wipe data: docker compose down -v
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: mei
+      POSTGRES_PASSWORD: mei_dev_password
+      POSTGRES_DB: mei_attendance
+      TZ: Asia/Kolkata
+      PGTZ: Asia/Kolkata
+    ports:
+      - "5433:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mei -d mei_attendance"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  db_data:
