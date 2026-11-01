@@ -4,11 +4,21 @@ import { ActionForm, Field, SubmitButton } from "@/components/action-form";
 import { Card, Input, NoAccess, PageHeader, Select } from "@/components/ui";
 import { canManageSettings, seesWholeCollege } from "@/lib/auth/permissions";
 import { requireStaff } from "@/server/current";
-import { saveLeavePolicy, saveSettings } from "./actions";
+import { CONFIGURABLE_TRIGGERS, TRIGGER_LABEL } from "@/lib/notify/rules";
+import { loadTriggerSettings } from "@/server/notify/outbox";
+import { saveLeavePolicy, saveMessageSettings, saveSettings } from "./actions";
 
 export const metadata = { title: "Settings · MEI Attendance" };
 
 const LEAVE_LABEL = { MEDICAL: "Medical leave", ON_DUTY: "On duty (sports, NSS, events)", PERSONAL: "Personal leave", OTHER: "Other" } as const;
+const TRIGGER_HINT = {
+  WEEKLY_SUMMARY: "Sunday 5 pm: classes attended and missed that week, term %.",
+  ATTENDANCE_WARNING: "Once, when a subject drops below the warning level.",
+  ATTENDANCE_SHORTAGE: "Once, when a subject drops below the minimum. Also sent to parents who opted out of updates.",
+  CONSECUTIVE_ABSENCE: "After the number of days set under rules. Also sent to parents who opted out.",
+  DAY_ABSENCE: "Evening, when a student missed every class that day. Can be a lot of messages.",
+  LEAVE_RECORDED: "When a leave or on-duty notice is approved.",
+} as const;
 const COUNTS_LABEL = { PRESENT: "Counts as present", EXCUSED: "Excused (not counted at all)", ABSENT: "Still absent (noted as leave)" } as const;
 
 export default async function SettingsPage() {
@@ -18,6 +28,7 @@ export default async function SettingsPage() {
   const db = getDb();
   const [[s], policies] = await Promise.all([db.select().from(collegeSettings), db.select().from(leavePolicy)]);
   const policy = Object.fromEntries(policies.map((p) => [p.type, p.countsAs]));
+  const triggers = await loadTriggerSettings(db);
 
   return (
     <>
@@ -72,6 +83,26 @@ export default async function SettingsPage() {
               ))}
             </fieldset>
             {canEdit && <SubmitButton>Save leave rules</SubmitButton>}
+          </ActionForm>
+        </Card>
+
+        <Card title="Messages to parents">
+          <p className="mb-4 text-sm text-slate-600">
+            Sent on WhatsApp (SMS if the parent has no WhatsApp), in English and Kannada, only to numbers with recorded consent. Nothing is sent between 9 pm and 8 am.
+          </p>
+          <ActionForm action={saveMessageSettings} className="space-y-3">
+            <fieldset disabled={!canEdit} className="space-y-3">
+              {CONFIGURABLE_TRIGGERS.map((t) => (
+                <label key={t} className="flex items-start gap-2 text-sm text-slate-700">
+                  <input type="checkbox" name={t} defaultChecked={triggers[t]} className="mt-0.5 size-4" />
+                  <span>
+                    {TRIGGER_LABEL[t]}
+                    <span className="block text-xs text-slate-500">{TRIGGER_HINT[t]}</span>
+                  </span>
+                </label>
+              ))}
+            </fieldset>
+            {canEdit && <SubmitButton>Save message settings</SubmitButton>}
           </ActionForm>
         </Card>
       </div>

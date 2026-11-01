@@ -116,6 +116,21 @@ export function canViewCompliance(a: Actor) {
   return seesWholeCollege(a) || hodDepartmentIds(a).length > 0;
 }
 
+/** See parent messages: whole college, HOD's departments, class teacher's class. */
+export function canViewMessages(a: Actor) {
+  return seesWholeCollege(a) || hodDepartmentIds(a).length > 0 || classTeacherClassIds(a).length > 0;
+}
+
+/** Send a notice to parents (college, department or class). */
+export function canBroadcast(a: Actor) {
+  return isAdmin(a) || isPrincipal(a);
+}
+
+/** Retry / cancel messages and run the sender by hand. */
+export function canManageOutbox(a: Actor) {
+  return isAdmin(a);
+}
+
 /** Department filter for list queries: null = all departments. */
 export function visibleDepartmentIds(a: Actor): number[] | null {
   return seesWholeCollege(a) ? null : hodDepartmentIds(a);
@@ -135,6 +150,7 @@ export function navFor(a: Actor): NavItem[] {
   if (anyClass) items.push({ href: "/classes", label: "Classes" });
   if (anyClass) items.push({ href: "/students", label: "Students" });
   if (anyClass) items.push({ href: "/reports", label: "Reports" });
+  if (canViewMessages(a)) items.push({ href: "/messages", label: "Messages" });
   if (seesWholeCollege(a) || hodDepartmentIds(a).length > 0) items.push({ href: "/courses", label: "Subjects" });
   items.push({ href: "/calendar", label: "Calendar" });
   if (canViewStaffList(a)) items.push({ href: "/staff", label: "Staff" });

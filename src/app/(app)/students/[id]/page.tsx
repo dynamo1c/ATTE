@@ -9,7 +9,9 @@ import { formatIndianMobile } from "@/lib/domain/phone";
 import { requireStaff } from "@/server/current";
 import { getCurrentTerm, parseId } from "@/server/queries";
 import { canManageStudent, canViewStudent, getStudent } from "@/server/student-data";
+import { canViewMessages } from "@/lib/auth/permissions";
 import { StudentAttendanceCard } from "./attendance-card";
+import { StudentMessagesCard } from "./messages-card";
 import { addContact, changeBatch, removeContact, updateContact, updateStudentProfile } from "../actions";
 
 const RELATION = { FATHER: "Father", MOTHER: "Mother", GUARDIAN: "Guardian", OTHER: "Other" } as const;
@@ -116,6 +118,7 @@ export default async function StudentPage(props: PageProps<"/students/[id]">) {
           </Card>
         )}
       </div>
+      {canViewMessages(me.actor) && <StudentMessagesCard studentId={s.id} regNo={s.regNo} />}
       <p className="mt-6 text-sm text-slate-500">Marks for this student appear here in the next phase.</p>
     </>
   );

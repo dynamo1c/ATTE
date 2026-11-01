@@ -689,14 +689,49 @@ export const notification = pgTable(
     attempts: smallint("attempts").notNull().default(0),
     lastError: text("last_error"),
     providerMessageId: text("provider_message_id"),
+    /** Which provider sent it (mock / whatsapp_cloud / sms provider). */
+    provider: text("provider"),
     scheduledFor: timestamp("scheduled_for", { withTimezone: true }).notNull().defaultNow(),
+    sentAt: timestamp("sent_at", { withTimezone: true }),
+    /** SMS fallback rows point at the WhatsApp message they replace. */
+    fallbackOf: bigint("fallback_of", { mode: "number" }),
+    /** Staff who caused it (broadcast, leave approval); null for automatic alerts. */
+    createdBy: integer("created_by").references(() => staff.id),
     createdAt: createdAt(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
     check("notification_phone_format", sql`${t.phone} ~ '^\\+91[6-9][0-9]{9}$'`),
+    check("notification_attempts_range", sql`${t.attempts} BETWEEN 0 AND 20`),
     index("notification_status_scheduled_idx").on(t.status, t.scheduledFor),
     index("notification_student_idx").on(t.studentId),
+    index("notification_provider_msg_idx").on(t.providerMessageId),
+    index("notification_created_idx").on(t.createdAt),
+  ],
+);
+
+/** Which automatic parent messages are switched on (docs/PLAN.md §8.1). Missing row = the default in code. */
+export const notificationSetting = pgTable("notification_setting", {
+  trigger: notificationTrigger("trigger").primaryKey(),
+  enabled: boolean("enabled").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/**
+ * Last attendance standing a student's parents were told about, per term. Alerts fire only when the
+ * standing gets worse than this; recovering resets it, so a later drop alerts again ("once, on crossing").
+ */
+export const studentAlertState = pgTable(
+  "student_alert_state",
+  {
+    studentId: integer("student_id").notNull().references(() => student.id),
+    termId: integer("term_id").notNull().references(() => term.id),
+    standing: text("standing").notNull(),
+    changedOn: date("changed_on").notNull(),
+  },
+  (t) => [
+    primaryKey({ name: "student_alert_state_pk", columns: [t.studentId, t.termId] }),
+    check("student_alert_state_standing", sql`${t.standing} IN ('OK', 'AT_RISK', 'SHORTAGE')`),
   ],
 );
 

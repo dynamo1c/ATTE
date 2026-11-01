@@ -4,9 +4,10 @@ import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getDb } from "@/db/client";
-import { collegeSettings, leavePolicy } from "@/db/schema";
+import { collegeSettings, leavePolicy, notificationSetting } from "@/db/schema";
 import { canManageSettings } from "@/lib/auth/permissions";
 import { checkbox, decimal, int, oneOf, text } from "@/lib/forms";
+import { CONFIGURABLE_TRIGGERS } from "@/lib/notify/rules";
 import { formAction, UserError } from "@/server/action";
 import { audit } from "@/server/audit";
 import { ensure } from "@/server/current";
@@ -57,4 +58,22 @@ export const saveLeavePolicy = formAction(leaveSchema, async (input, { me }) => 
   });
   revalidatePath("/admin/settings");
   return { ok: true, message: "Leave rules saved. Attendance percentages use them from now on." };
+});
+
+const messageSchema = z.object(Object.fromEntries(CONFIGURABLE_TRIGGERS.map((t) => [t, checkbox()])) as Record<(typeof CONFIGURABLE_TRIGGERS)[number], ReturnType<typeof checkbox>>);
+
+export const saveMessageSettings = formAction(messageSchema, async (input, { me }) => {
+  ensure(canManageSettings(me.actor));
+  await getDb().transaction(async (tx) => {
+    const before = await tx.select().from(notificationSetting);
+    for (const trigger of CONFIGURABLE_TRIGGERS) {
+      await tx
+        .insert(notificationSetting)
+        .values({ trigger, enabled: input[trigger] })
+        .onConflictDoUpdate({ target: notificationSetting.trigger, set: { enabled: input[trigger], updatedAt: new Date() } });
+    }
+    await audit(tx, { actorStaffId: me.id, action: "UPDATE", entity: "notification_setting", entityId: "all", before, after: input });
+  });
+  revalidatePath("/admin/settings");
+  return { ok: true, message: "Parent message settings saved." };
 });

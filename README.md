@@ -6,7 +6,7 @@ Full design, rules and open questions: **[docs/PLAN.md](docs/PLAN.md)**. Read it
 
 ## Status
 
-Prototype with dummy data. Phases 0–4 done: database, rule logic with tests, dummy data, staff sign-in with roles, setup screens (staff, classes, subjects, teachers, timetables, calendar, students and parent numbers, settings), and attendance: live or from the book, late-change requests with HOD approval, leave/OD notices; attendance % per student and subject, class sheets, shortage lists and the "not yet entered" report. Next: marks (waiting for the CIE formula).
+Prototype with dummy data. Phases 0–4 and 6 done: database, rule logic with tests, dummy data, staff sign-in with roles, setup screens (staff, classes, subjects, teachers, timetables, calendar, students and parent numbers, settings), and attendance: live or from the book, late-change requests with HOD approval, leave/OD notices; attendance % per student and subject, class sheets, shortage lists and the "not yet entered" report; messages to parents (weekly summary, shortage / warning / absence alerts, notices) in English + Kannada through an outbox, with a mock sender and the WhatsApp Cloud API. Next: marks (waiting for the CIE formula) and the parent portal.
 
 ## Demo sign-in (dummy data only)
 
@@ -48,6 +48,7 @@ npm run dev          # open http://localhost:3000
 | `npm run db:reset` | Wipe + migrate + reseed. Refuses to run against a non-local database |
 | `npm run db:studio` | Browse the database in the browser |
 | `npm run sessions:generate` | Create today's classes from timetables (run nightly, see below) |
+| `npm run notify:run` | Queue due parent messages and send queued ones (every 15 min, see below) |
 
 ## Nightly job
 
@@ -55,6 +56,16 @@ Classes are created from the timetable + calendar. Pages create them on demand, 
 
 - Windows Task Scheduler: action `npm`, arguments `run sessions:generate`, start in the project folder.
 - Linux cron: `30 0 * * * cd /path/to/att && npm run sessions:generate`
+
+## Parent messages
+
+Messages are rows in the `notification` table (the outbox), written in the same transaction as whatever caused them. `npm run notify:run` finds due alerts and sends what is queued. Schedule it **every 15 minutes**, like the nightly job. It is safe to run any number of times: each message has a dedupe key.
+
+- `NOTIFY_PROVIDER=mock` (default): nothing leaves the server. Messages show as "sent" on the Messages screen, with a preview.
+- `NOTIFY_PROVIDER=whatsapp`: Meta WhatsApp Cloud API. Set `WHATSAPP_TOKEN` and `WHATSAPP_PHONE_NUMBER_ID`, and **`NOTIFY_ALLOWED_NUMBERS`** (your own test numbers). The app refuses to start sending to everyone unless `NOTIFY_ALLOW_ALL=yes`. Plain-text messages only reach a parent who messaged the college number in the last 24 hours. Real use needs Meta-approved templates (docs/PLAN.md §8.4).
+- Delivery receipts: point the Meta webhook at `/api/whatsapp/webhook` with `WHATSAPP_VERIFY_TOKEN` and `WHATSAPP_APP_SECRET` set.
+- SMS fallback needs a DLT-registered SMS provider (not added yet). Until then SMS rows fail with "No SMS provider is configured".
+- The Kannada text in `src/lib/notify/templates.ts` must be checked by college staff before templates are submitted.
 
 ## Folder layout
 

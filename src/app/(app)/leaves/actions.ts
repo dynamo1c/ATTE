@@ -13,7 +13,9 @@ import { formAction, UserError } from "@/server/action";
 import { audit } from "@/server/audit";
 import { ensure } from "@/server/current";
 import { getCurrentTerm } from "@/server/queries";
-import { getStudent } from "@/server/student-data";
+import { dedupeKey } from "@/lib/notify/rules";
+import { enqueueForStudents, loadTriggerSettings, type Tx } from "@/server/notify/outbox";
+import { getStudent, type StudentProfile } from "@/server/student-data";
 
 const MAX_DAYS = 60;
 
@@ -22,6 +24,24 @@ async function studentClass(studentId: number) {
   const s = await getStudent(studentId, term?.id ?? null);
   if (!s?.membership) throw new UserError("This student is not in a class this term.");
   return { s, classRef: { id: s.membership.classGroupId, departmentId: s.membership.classDepartmentId } };
+}
+
+/** Tell parents (if switched on in Settings) — same transaction as the approval, so it is queued only if the approval is saved. */
+async function queueLeaveMessage(tx: Tx, leave: { id: number; type: "MEDICAL" | "ON_DUTY" | "PERSONAL" | "OTHER"; fromDate: string; toDate: string }, s: StudentProfile, createdBy: number) {
+  if (!(await loadTriggerSettings(tx)).LEAVE_RECORDED) return;
+  const className = s.membership ? `${s.membership.classDept} Sem ${s.membership.semester}` : "";
+  await enqueueForStudents(
+    tx,
+    [
+      {
+        trigger: "LEAVE_RECORDED",
+        studentId: s.id,
+        data: { kind: "LEAVE_RECORDED", student: { name: s.name, regNo: s.regNo, className }, leaveType: leave.type, from: leave.fromDate, to: leave.toDate },
+        key: (cid) => dedupeKey.leave(leave.id, cid),
+      },
+    ],
+    { createdBy },
+  );
 }
 
 export const createLeave = formAction(
@@ -64,6 +84,7 @@ export const createLeave = formAction(
         })
         .returning();
       await audit(tx, { actorStaffId: me.id, action: "CREATE", entity: "leave_notice", entityId: row.id, after: row });
+      if (autoApprove) await queueLeaveMessage(tx, row, s, me.id);
     });
     revalidatePath("/leaves");
     return { ok: true, message: autoApprove ? `Recorded and approved for ${s.name}.` : `Recorded for ${s.name}. Waiting for HOD approval.` };
@@ -74,7 +95,7 @@ export const decideLeave = formAction(z.object({ id: int("Notice"), decision: on
   const db = getDb();
   const [row] = await db.select().from(leaveNotice).where(eq(leaveNotice.id, id));
   if (!row || row.status !== "PENDING") throw new UserError("Already decided.");
-  const { classRef } = await studentClass(row.studentId);
+  const { s, classRef } = await studentClass(row.studentId);
   ensure(canApproveForClass(me.actor, classRef), "Only the HOD or admin can approve leave.");
   await db.transaction(async (tx) => {
     const done = await tx
@@ -84,6 +105,7 @@ export const decideLeave = formAction(z.object({ id: int("Notice"), decision: on
       .returning({ id: leaveNotice.id });
     if (!done.length) throw new UserError("Already decided.");
     await audit(tx, { actorStaffId: me.id, action: decision === "APPROVED" ? "APPROVE" : "REJECT", entity: "leave_notice", entityId: id, before: row });
+    if (decision === "APPROVED") await queueLeaveMessage(tx, row, s, me.id);
   });
   revalidatePath("/leaves");
   return { ok: true, message: decision === "APPROVED" ? "Approved. Attendance % now applies the leave rule." : "Rejected." };

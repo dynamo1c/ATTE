@@ -22,6 +22,13 @@
       "when": 1793510414923,
       "tag": "0002_edit_requests",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1793529959265,
+      "tag": "0003_notifications",
+      "breakpoints": true
     }
   ]
 }

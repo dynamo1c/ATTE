@@ -1,14 +1,17 @@
 import { describe, expect, it } from "vitest";
 import {
+  canBroadcast,
   canEditCalendar,
   canEditLockedAttendance,
   canMarkSession,
   canManageClass,
   canManageClassStudents,
   canManageDepartment,
+  canManageOutbox,
   canManageSettings,
   canViewClass,
   canViewCompliance,
+  canViewMessages,
   navFor,
   visibleDepartmentIds,
   type Actor,
@@ -89,6 +92,12 @@ describe("permissions", () => {
     expect(labels(actor([g("FACULTY", 2)]))).not.toContain("Classes");
     expect(labels(faculty)).toContain("Reports");
     expect(labels(actor([g("FACULTY", 2)]))).not.toContain("Reports");
+  });
+
+  it("parent messages: who sees, sends notices, and manages the queue", () => {
+    expect([admin, principal, hodCs, classTeacher, faculty].map(canViewMessages)).toEqual([true, true, true, true, false]);
+    expect([admin, principal, hodCs, classTeacher, faculty].map(canBroadcast)).toEqual([true, true, false, false, false]);
+    expect([admin, principal, hodCs].map(canManageOutbox)).toEqual([true, false, false]);
   });
 
   it("only HOD, principal and admin see who has not entered attendance", () => {

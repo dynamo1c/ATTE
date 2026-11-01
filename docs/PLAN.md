@@ -340,6 +340,17 @@ Demo-ready after phases 0–4 + 6 (mock + test number).
 
 **Progress:** Phase 0 and 1 done (2026-10-31). Schema with DB-level checks, pure rule logic (attendance %, calendar, timetable, reg no, phone) with 62 unit tests, 14 database-constraint tests, deterministic dummy data seed, CI workflow, status page.
 
+**Progress:** Phase 6 done (2026-11-01).
+
+- Built triggers: weekly summary (Sunday 17:00, Mon–Sat, catch-up until Tuesday 09:00, never stale), below warning / below minimum (once per drop, remembered in `student_alert_state`; a subject needs ≥ 8 counted classes before it can alert), absent N working days in a row (Settings; days with unentered classes never count as absent), absent all day (off), leave/OD approved (off, queued in the approval transaction), notices from principal/admin to college / department / class.
+- On/off per trigger in Settings (`notification_setting`). Marks triggers wait for phase 5, OTP for phase 7.
+- Consent required for every message (DPDP). Opt-out stops everything except shortage / consecutive-absence / eligibility / OTP. Same number saved twice = one message.
+- Quiet hours 21:00–08:00 IST: messages wait until 08:00.
+- Sender: claims rows with SKIP LOCKED, retries temporary errors (1/4/16/64 min, 5 tries), "not on WhatsApp" on a critical message → SMS copy. Stuck "sending" rows requeue after 10 min (at-least-once).
+- Providers: mock (default), WhatsApp Cloud API (text messages; templates needed for production), SMS not configured yet. Test-mode allow-list `NOTIFY_ALLOWED_NUMBERS`.
+- Webhook `/api/whatsapp/webhook`: signature-checked delivery statuses, forward-only.
+- **[OPEN]** Kannada wording to be checked by college staff. Whether parents should get the day-absence alert.
+
 **Progress:** Phase 4 done (2026-11-01).
 
 - Percentages are never stored: every page computes them from the raw marks with the tested rules, so a corrected mark or leave notice shows at once. Unentered classes are left out and counted separately.
