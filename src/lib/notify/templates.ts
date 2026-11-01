@@ -53,6 +53,8 @@ export type MessageData =
   | { kind: "DAY_ABSENCE"; student: StudentRef; date: IsoDate }
   | { kind: "LEAVE_RECORDED"; student: StudentRef; leaveType: "MEDICAL" | "ON_DUTY" | "PERSONAL" | "OTHER"; from: IsoDate; to: IsoDate }
   | { kind: "BROADCAST"; textEn: string; textKn: string }
+  /** Stored with the code masked; the real code only goes to the provider. */
+  | { kind: "LOGIN_OTP"; code: string; minutes: number }
   | {
       kind: "MARKS_PUBLISHED" | "LOW_MARKS";
       student: StudentRef;
@@ -128,6 +130,8 @@ function english(d: MessageData): string {
       return lines(`${COLLEGE_EN}`, `${LEAVE_EN[d.leaveType]} recorded for ${who(d.student)}: ${range(d.from, d.to, formatDateShort)}.`);
     case "BROADCAST":
       return lines(`${COLLEGE_EN} – Notice`, d.textEn);
+    case "LOGIN_OTP":
+      return lines(`${COLLEGE_EN} – Parent portal`, `Your login code is ${d.code}. It is valid for ${d.minutes} minutes.`, "Do not share this code with anyone, not even college staff.");
     case "MARKS_PUBLISHED":
       return lines(
         `${COLLEGE_EN} – Marks`,
@@ -187,6 +191,8 @@ function kannada(d: MessageData): string {
       return lines(`${COLLEGE_KN}`, `${who(d.student)} ಅವರಿಗೆ ${range(d.from, d.to, formatDateKn)} ${LEAVE_KN[d.leaveType]} ದಾಖಲಿಸಲಾಗಿದೆ.`);
     case "BROADCAST":
       return lines(`${COLLEGE_KN} – ಸೂಚನೆ`, d.textKn);
+    case "LOGIN_OTP":
+      return lines(`${COLLEGE_KN} – ಪೋಷಕರ ಪೋರ್ಟಲ್`, `ನಿಮ್ಮ ಲಾಗಿನ್ ಕೋಡ್ ${d.code}. ಇದು ${d.minutes} ನಿಮಿಷ ಮಾನ್ಯವಾಗಿರುತ್ತದೆ.`, "ಈ ಕೋಡ್ ಅನ್ನು ಕಾಲೇಜು ಸಿಬ್ಬಂದಿ ಸೇರಿದಂತೆ ಯಾರೊಂದಿಗೂ ಹಂಚಿಕೊಳ್ಳಬೇಡಿ.");
     case "MARKS_PUBLISHED":
       return lines(
         `${COLLEGE_KN} – ಅಂಕಗಳು`,
@@ -251,6 +257,8 @@ function sms(d: MessageData, lang: Language): string | undefined {
       return kn ? `MEI: ${name} ${LEAVE_KN[d.leaveType]} ದಾಖಲು.` : `MEI Poly: ${LEAVE_EN[d.leaveType]} recorded for ${name}, ${range(d.from, d.to, formatDateShort)}.`;
     case "BROADCAST":
       return kn ? `MEI: ${d.textKn}` : `MEI Poly: ${d.textEn}`;
+    case "LOGIN_OTP":
+      return kn ? `MEI: ನಿಮ್ಮ ಲಾಗಿನ್ ಕೋಡ್ ${d.code}. ಯಾರಿಗೂ ಹೇಳಬೇಡಿ.` : `MEI Poly parent portal code: ${d.code}. Valid ${d.minutes} min. Do not share it with anyone.`;
     case "MARKS_PUBLISHED":
     case "LOW_MARKS": {
       const m = d.mark === "AB" || d.mark === "MP" ? (kn ? markKn(d.mark) : markEn(d.mark)) : `${d.mark}/${d.maxMarks}`;

@@ -6,7 +6,7 @@ Full design, rules and open questions: **[docs/PLAN.md](docs/PLAN.md)**. Read it
 
 ## Status
 
-Prototype with dummy data. Phases 0–6 done: database, rule logic with tests, dummy data, staff sign-in with roles, setup screens (staff, classes, subjects, teachers, timetables, calendar, students and parent numbers, settings), and attendance: live or from the book, late-change requests with HOD approval, leave/OD notices; attendance % per student and subject, class sheets, shortage lists and the "not yet entered" report; messages to parents (weekly summary, shortage / warning / absence alerts, notices) in English + Kannada through an outbox, with a mock sender and the WhatsApp Cloud API. marks: entry per test (theory, practical, activity, final exam), teacher → HOD → published, internal /50 + final /50 = /100 with the college's formula, low-marks report and parent messages. Next: the parent portal.
+Prototype with dummy data. Phases 0–7 done: database, rule logic with tests, dummy data, staff sign-in with roles, setup screens (staff, classes, subjects, teachers, timetables, calendar, students and parent numbers, settings), and attendance: live or from the book, late-change requests with HOD approval, leave/OD notices; attendance % per student and subject, class sheets, shortage lists and the "not yet entered" report; messages to parents (weekly summary, shortage / warning / absence alerts, notices) in English + Kannada through an outbox, with a mock sender and the WhatsApp Cloud API. marks: entry per test (theory, practical, activity, final exam), teacher → HOD → published, internal /50 + final /50 = /100 with the college's formula, low-marks report and parent messages; a parent portal (register number + phone on record + one-time code) showing attendance and published marks for every child linked to the number. Next: PDF / Excel reports.
 
 ## Demo sign-in (dummy data only)
 
@@ -20,6 +20,8 @@ Password for every dummy staff account: the `SEED_STAFF_PASSWORD` value in `.env
 | Class teacher CS Sem 3 (+ faculty) | 70000 00012 |
 | Faculty, CS | 70000 00059 |
 | Faculty, Maths (common pool) | 70000 00052 |
+
+**Parent portal** (`/parent`): mobile `90000 00001` with register number `204CS25001` or `204CS26001` (two siblings). With the mock sender (`NOTIFY_PROVIDER=mock`) nothing is really sent, so the code is shown on screen in development, or in a production build when `PARENT_OTP_DEMO=yes`.
 
 ## Run it locally
 
@@ -79,7 +81,8 @@ src/lib/auth/             Password hashing and the permission rules (who may do 
 src/server/               Server-only code: sessions, current user, form-action wrapper, audit log, queries
 src/components/           Shared UI (ui.tsx) and <ActionForm> for every form
 src/app/(app)/            Signed-in pages; each folder has page.tsx and actions.ts
-src/proxy.ts              Sends signed-out visitors to /login (real checks happen on the server)
+src/app/parent/           Parent portal (own sign-in, cookie and session table)
+src/proxy.ts              Sends signed-out visitors to /login or /parent/login (real checks happen on the server)
 tests/db/                 Tests proving the database rejects bad data
 ```
 
@@ -97,6 +100,7 @@ tests/db/                 Tests proving the database rejects bad data
 - 7 departments × Sem 1/3/5 × 60 students, register numbers like `204CS25012`.
 - CS timetables transcribed from the official odd-semester 2026-27 timetable. Other departments reuse the same grids with **placeholder subjects**.
 - Attendance from 17 Aug 2026 to today; last two days partly unmarked to show "pending".
+- One demo guardian number (90000 00001) linked to two siblings, for the parent portal.
 - Marks: tests 1 published, tests 2 mostly published (CS Sem 3 waiting for the HOD), activity not entered yet. **CS Sem 1 is complete, including dummy final exam marks**, to show totals out of 100.
 - Edge cases: detained student `204CS25058` (in Sem 1), lateral entries `204CS26301–303`, mid-term joiner `204CS26061`, batch change `204CS25015`, dropout `204ME25044`.
 - Parent phone numbers are fake (`+918000…`). **Never point a live WhatsApp/SMS provider at dummy data.**

@@ -1,6 +1,6 @@
 import "server-only";
 import { createHash, randomBytes } from "node:crypto";
-import { and, eq, gt, lt, ne } from "drizzle-orm";
+import { and, eq, gt, ne } from "drizzle-orm";
 import { cookies, headers } from "next/headers";
 import { getDb } from "@/db/client";
 import { staffSession } from "@/db/schema";
@@ -74,8 +74,4 @@ export async function revokeSessions(staffId: number, keepCurrent = false): Prom
     }
   }
   await db.delete(staffSession).where(eq(staffSession.staffId, staffId));
-}
-
-export async function purgeExpiredSessions(): Promise<void> {
-  await getDb().delete(staffSession).where(lt(staffSession.expiresAt, new Date()));
 }

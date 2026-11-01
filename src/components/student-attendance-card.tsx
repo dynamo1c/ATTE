@@ -9,8 +9,8 @@ import { getClassAttendance, getLeavePolicy } from "@/server/attendance-report";
 
 const LEAVE_LABEL = { MEDICAL: "Medical", ON_DUTY: "OD", PERSONAL: "Personal", OTHER: "Leave" } as const;
 
-/** Attendance % per subject for one student in their current class, plus their recent absences. */
-export async function StudentAttendanceCard({ studentId, classId }: { studentId: number; classId: number }) {
+/** Attendance % per subject for one student in their current class, plus their recent absences. Also used by the parent portal. */
+export async function StudentAttendanceCard({ studentId, classId, forParent = false }: { studentId: number; classId: number; forParent?: boolean }) {
   const [data, policy, recent] = await Promise.all([
     getClassAttendance(classId, { studentIds: [studentId] }),
     getLeavePolicy(),
@@ -31,15 +31,20 @@ export async function StudentAttendanceCard({ studentId, classId }: { studentId:
   const { minPct, warnPct } = data;
   const by = new Map(me.attendance.byOffering.map((o) => [o.offeringId, o]));
   const overall = me.attendance.overall;
+  // The standing is per subject (60% rule), so say how many subjects: "61% overall · Below 60%" alone reads as a contradiction.
+  const short = [...me.subjectStanding.values()].filter((s) => s === "SHORTAGE").length;
+  const risky = [...me.subjectStanding.values()].filter((s) => s === "AT_RISK").length;
 
   return (
     <Card
       title="Attendance this term"
       className="mb-6"
       actions={
+        !forParent && (
         <Link href={`/classes/${classId}/attendance`} className="text-sm text-blue-700 hover:underline">
           Whole class →
         </Link>
+        )
       }
     >
       <div className="mb-4 flex flex-wrap items-center gap-3">
@@ -50,7 +55,17 @@ export async function StudentAttendanceCard({ studentId, classId }: { studentId:
           overall · {overall.attended} of {overall.counted} classes
           {overall.late > 0 && ` · ${overall.late} late`}
         </span>
-        <StandingBadge standing={me.standing} minPct={minPct} />
+        {short > 0 ? (
+          <Badge tone="red">
+            Below {minPct}% in {short} subject{short === 1 ? "" : "s"}
+          </Badge>
+        ) : risky > 0 ? (
+          <Badge tone="amber">
+            At risk in {risky} subject{risky === 1 ? "" : "s"}
+          </Badge>
+        ) : (
+          <StandingBadge standing={me.standing} minPct={minPct} />
+        )}
         {overall.unmarked > 0 && <span className="text-xs text-amber-700">{overall.unmarked} classes not yet entered by teachers</span>}
       </div>
 

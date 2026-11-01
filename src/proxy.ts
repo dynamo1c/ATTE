@@ -9,6 +9,11 @@ const PUBLIC_PATHS = ["/login", "/api/whatsapp"];
 
 export function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
+  // Parent portal: its own cookie and sign-in page; staff cookies don't apply.
+  if (pathname === "/parent" || pathname.startsWith("/parent/")) {
+    if (pathname === "/parent/login" || request.cookies.has("mei_parent")) return NextResponse.next();
+    return NextResponse.redirect(new URL("/parent/login", request.url));
+  }
   if (PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`))) return NextResponse.next();
   if (request.cookies.has("mei_session")) return NextResponse.next();
   const url = new URL("/login", request.url);

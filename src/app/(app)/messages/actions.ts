@@ -1,7 +1,7 @@
 "use server";
 
 import { randomUUID } from "node:crypto";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, ne, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getDb } from "@/db/client";
@@ -24,9 +24,9 @@ export const retryMessage = formAction(z.object({ id: int("Message") }), async (
     const done = await tx
       .update(notification)
       .set({ status: "QUEUED", attempts: 0, scheduledFor: new Date(), lastError: null, updatedAt: new Date() })
-      .where(and(eq(notification.id, id), inArray(notification.status, ["FAILED", "SKIPPED"])))
+      .where(and(eq(notification.id, id), inArray(notification.status, ["FAILED", "SKIPPED"]), ne(notification.trigger, "LOGIN_OTP")))
       .returning({ id: notification.id });
-    if (!done.length) throw new UserError("Only failed or skipped messages can be retried.");
+    if (!done.length) throw new UserError("Only failed or skipped messages can be retried. Login codes can't be resent: the parent asks for a new one.");
     await audit(tx, { actorStaffId: me.id, action: "RETRY", entity: "notification", entityId: id });
   });
   revalidatePath("/messages");

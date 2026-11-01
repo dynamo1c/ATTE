@@ -7,6 +7,7 @@
  */
 import "dotenv/config";
 import { createDb, createPool } from "@/db/client";
+import { purgeAuth } from "../auth-cleanup";
 import { providersFromEnv } from "./providers";
 import { runScan } from "./scan";
 import { processOutbox } from "./worker";
@@ -21,6 +22,8 @@ async function main() {
     if (scan) {
       const r = await runScan(db);
       const queued = Object.entries(r.queued).map(([k, v]) => `${k}=${v}`).join(", ") || "nothing new";
+      const purged = await purgeAuth(db);
+      if (purged) console.log(`Cleanup: ${purged} expired sign-in rows removed.`);
       console.log(`Scan: ${r.students} students checked${r.week ? `, weekly summary for ${r.week.from}–${r.week.to}` : ""}. Queued: ${queued}.`);
     }
     if (send) {

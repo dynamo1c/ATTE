@@ -31,6 +31,8 @@ const RNG_SEED = 2026_27;
 const DEMO_PASSWORD = process.env.SEED_STAFF_PASSWORD || "meidemo2026";
 const COLLEGE_CODE = "204";
 const TERM_START: IsoDate = "2026-08-17";
+/** Parent portal demo number (linked to two siblings). */
+const DEMO_PARENT_PHONE = "+919000000001";
 const TERM_END: IsoDate = "2026-12-31";
 const SEMESTERS = [1, 3, 5] as const;
 const ADMISSION_YEAR: Record<(typeof SEMESTERS)[number], number> = { 1: 2026, 3: 2025, 5: 2024 };
@@ -459,6 +461,21 @@ async function seed(tx: Tx, until: IsoDate) {
     parentRows.push(contact("FATHER", "MALE"));
     if (rng.chance(0.5)) parentRows.push(contact("MOTHER", "FEMALE"));
   }
+  // Demo parent portal login: one guardian number linked to two siblings (CS Sem 3 and CS Sem 1).
+  // Added after the random contacts and without the RNG, so the rest of the dummy data is unchanged.
+  const firstActive = (key: string) => studentRows.find((s, i) => drafts[i].classKey === key && s.status === "ACTIVE")!;
+  for (const sib of [firstActive("CS-3"), firstActive("CS-1")]) {
+    parentRows.push({
+      studentId: sib.id,
+      relation: "GUARDIAN",
+      name: "Demo Guardian",
+      phone: DEMO_PARENT_PHONE,
+      language: "BOTH",
+      whatsappOk: true,
+      consentAt: new Date(`${TERM_START}T10:00:00+05:30`),
+      consentMethod: "Signed admission form (dummy)",
+    });
+  }
   await insertChunked(parentRows, 2000, (chunk) => tx.insert(t.parentContact).values(chunk));
 
   const students: StudentInfo[] = studentRows.map((s, i) => {
@@ -657,6 +674,7 @@ async function seed(tx: Tx, until: IsoDate) {
       until,
     },
     logins,
+    parentLogin: { phone: DEMO_PARENT_PHONE.replace("+91", ""), regNos: [firstActive("CS-3").regNo, firstActive("CS-1").regNo] },
   };
 }
 
@@ -679,11 +697,12 @@ async function main() {
       await wipe(db);
     }
     const started = Date.now();
-    const { summary, logins } = await db.transaction((tx) => seed(tx, until));
+    const { summary, logins, parentLogin } = await db.transaction((tx) => seed(tx, until));
     console.log(`Seeded in ${((Date.now() - started) / 1000).toFixed(1)}s`);
     console.table(summary);
     console.log(`Demo logins (password for all: value of SEED_STAFF_PASSWORD in .env):`);
     console.table(logins);
+    console.log(`Parent portal (/parent): phone ${parentLogin.phone} with register number ${parentLogin.regNos.join(" or ")}. The code shows on screen in demo mode.`);
   } finally {
     await pool.end();
   }

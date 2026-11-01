@@ -3,6 +3,8 @@ import { notFound } from "next/navigation";
 import { getDb } from "@/db/client";
 import { parentContact } from "@/db/schema";
 import { ActionForm, Field, SubmitButton } from "@/components/action-form";
+import { StudentAttendanceCard } from "@/components/student-attendance-card";
+import { StudentMarksCard } from "@/components/student-marks-card";
 import { Badge, Card, Empty, Input, NoAccess, PageHeader, Select } from "@/components/ui";
 import { formatDateShort, todayIn } from "@/lib/domain/dates";
 import { formatIndianMobile } from "@/lib/domain/phone";
@@ -10,8 +12,6 @@ import { requireStaff } from "@/server/current";
 import { getCurrentTerm, parseId } from "@/server/queries";
 import { canManageStudent, canViewStudent, getStudent } from "@/server/student-data";
 import { canViewMessages } from "@/lib/auth/permissions";
-import { StudentAttendanceCard } from "./attendance-card";
-import { StudentMarksCard } from "./marks-card";
 import { StudentMessagesCard } from "./messages-card";
 import { addContact, changeBatch, removeContact, updateContact, updateStudentProfile } from "../actions";
 

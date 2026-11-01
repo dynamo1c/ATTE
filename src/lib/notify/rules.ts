@@ -215,6 +215,7 @@ export const dedupeKey = {
   broadcast: (broadcastId: string, contactId: number) => `BROADCAST:${broadcastId}:${contactId}`,
   /** One marks message per test per student per number: reopening and re-publishing does not resend. */
   marks: (assessmentId: number, studentId: number, contactId: number) => `MARKS:${assessmentId}:${studentId}:${contactId}`,
+  loginCode: (otpId: number) => `OTP:${otpId}`,
   smsFallback: (original: string) => `${original}:SMS`,
 };
 

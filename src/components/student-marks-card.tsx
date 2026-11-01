@@ -4,16 +4,16 @@ import { Card, Empty, Table, Td, Th } from "@/components/ui";
 import { getClassMarks } from "@/server/marks-data";
 import { getSettings } from "@/server/queries";
 
-/** Every test of every subject for one student, with internal /50, final /50 and total. */
-export async function StudentMarksCard({ studentId, classId }: { studentId: number; classId: number }) {
-  const [{ subjects, students }, settings] = await Promise.all([getClassMarks(classId, { studentIds: [studentId] }), getSettings()]);
+/** Every test of every subject for one student, with internal /50, final /50 and total. Parents see published marks only. */
+export async function StudentMarksCard({ studentId, classId, forParent = false }: { studentId: number; classId: number; forParent?: boolean }) {
+  const [{ subjects, students }, settings] = await Promise.all([getClassMarks(classId, { studentIds: [studentId], publishedOnly: forParent }), getSettings()]);
   const me = students[0];
   if (!me) return null;
   // Columns: the union of part codes in scheme order (main subjects and the minor differ).
   const codes = [...new Map(subjects.flatMap((s) => s.parts.filter((p) => !p.isFinal).map((p) => [p.code, p.label] as const))).entries()];
 
   return (
-    <Card title="Marks this term" className="mb-6" actions={<span className="text-xs text-slate-500">Includes marks not yet published (°)</span>}>
+    <Card title="Marks this term" className="mb-6" actions={forParent ? undefined : <span className="text-xs text-slate-500">Includes marks not yet published (°)</span>}>
       {subjects.length === 0 ? (
         <Empty>No subjects.</Empty>
       ) : (
@@ -39,9 +39,13 @@ export async function StudentMarksCard({ studentId, classId }: { studentId: numb
               return (
                 <tr key={sub.offeringId}>
                   <Td>
-                    <Link href={`/marks/${sub.offeringId}`} className="text-blue-700 hover:underline" title={sub.subjectName}>
-                      {sub.subject}
-                    </Link>
+                    {forParent ? (
+                      <span title={sub.subjectName}>{sub.subject}</span>
+                    ) : (
+                      <Link href={`/marks/${sub.offeringId}`} className="text-blue-700 hover:underline" title={sub.subjectName}>
+                        {sub.subject}
+                      </Link>
+                    )}
                   </Td>
                   {codes.map(([code]) => (
                     <Td key={code} className="text-right">

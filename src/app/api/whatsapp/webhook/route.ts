@@ -47,7 +47,7 @@ export async function POST(request: Request) {
       await tx.execute(sql`
         UPDATE notification SET status = ${u.status}, updated_at = now(), last_error = ${u.status === "FAILED" ? u.error : null}
         WHERE id = ${m.id}`);
-      if (u.status === "FAILED" && u.errorCode === NOT_ON_WHATSAPP && m.channel === "WHATSAPP" && CRITICAL.has(m.trigger as Trigger)) await queueSmsFallback(tx, m);
+      if (u.status === "FAILED" && u.errorCode === NOT_ON_WHATSAPP && m.channel === "WHATSAPP" && CRITICAL.has(m.trigger as Trigger) && m.trigger !== "LOGIN_OTP") await queueSmsFallback(tx, m);
     });
   }
   // Always 200 once verified: Meta retries anything else for days.

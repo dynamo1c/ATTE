@@ -357,6 +357,16 @@ Demo-ready after phases 0–4 + 6 (mock + test number).
 
 **Progress:** Phase 0 and 1 done (2026-10-31). Schema with DB-level checks, pure rule logic (attendance %, calendar, timetable, reg no, phone) with 62 unit tests, 14 database-constraint tests, deterministic dummy data seed, CI workflow, status page.
 
+**Progress:** Phase 7 done (2026-11-01).
+
+- Sign-in at `/parent`: register number + mobile number → 6-digit code on WhatsApp (SMS if the number isn't on WhatsApp) → 30-day session. Separate cookie (path `/parent`) and table (`parent_session`); staff sign-in is unaffected.
+- The code is never stored: `parent_otp` keeps sha256(challenge + code), the challenge lives only in the parent's cookie. Valid 10 minutes, 5 tries, single use. The outbox row is logged with the code masked; the worker, webhook and "retry" never resend a login code.
+- Wrong register number / phone pair looks exactly like a right one (same screen, every code "wrong"), so the portal can't be used to find out whose number is on record. Limits: 1 code per minute and 3 per 15 min per phone, 10 a day; 20 per 15 min per IP.
+- The parent sees every child whose record has that number (siblings), looked up on every request: a number removed by the class teacher stops working at once. Only active / detained students.
+- Shows attendance per subject (with "can miss N more" / "must attend the next N"), recent absences, **published marks only**, recent messages. Parents can switch to urgent messages only (opt-out, audited).
+- Demo: mock sender shows the code on screen (development, or `PARENT_OTP_DEMO=yes`). Expired sessions / old codes are cleaned up by `npm run notify:run`.
+- Fixes found: the SMS fallback was scheduled by wall clock instead of the run's time (a test failed depending on the hour); database test files now run one at a time.
+
 **Progress:** Phase 5 done (2026-11-01).
 
 - Three marks schemes as data (`assessment_scheme.formula`, `scheme_component`): main subject with theory final, main subject with practical final, minor (no final). Each subject picks one on the Subjects screen; it can't change once marks exist.

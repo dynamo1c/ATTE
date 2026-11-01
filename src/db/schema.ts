@@ -678,6 +678,51 @@ export const loginAttempt = pgTable(
   (t) => [index("login_attempt_phone_at_idx").on(t.phone, t.at), index("login_attempt_ip_at_idx").on(t.ip, t.at)],
 );
 
+/**
+ * Parent login codes (src/lib/auth/otp.ts). One row per request, matched or not, so the rate limits
+ * count everything and a wrong register number looks the same as a right one.
+ */
+export const parentOtp = pgTable(
+  "parent_otp",
+  {
+    id: bigint("id", { mode: "number" }).primaryKey().generatedAlwaysAsIdentity(),
+    /** sha256 of the random challenge kept in the parent's cookie. */
+    challengeHash: text("challenge_hash").notNull().unique(),
+    /** sha256(challenge + code); the code itself is never stored. */
+    codeHash: text("code_hash").notNull(),
+    phone: text("phone").notNull(),
+    regNo: text("reg_no").notNull(),
+    /** The contact the phone matched; null = no match (every code is wrong). */
+    parentContactId: integer("parent_contact_id").references(() => parentContact.id, { onDelete: "set null" }),
+    tries: smallint("tries").notNull().default(0),
+    ip: text("ip"),
+    createdAt: createdAt(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    usedAt: timestamp("used_at", { withTimezone: true }),
+  },
+  (t) => [
+    check("parent_otp_phone_format", sql`${t.phone} ~ '^\\+91[6-9][0-9]{9}$'`),
+    check("parent_otp_tries_range", sql`${t.tries} BETWEEN 0 AND 20`),
+    index("parent_otp_phone_created_idx").on(t.phone, t.createdAt),
+    index("parent_otp_ip_created_idx").on(t.ip, t.createdAt),
+  ],
+);
+
+/** Parent portal sessions: keyed by phone, so siblings come with it and removing a number ends access. */
+export const parentSession = pgTable(
+  "parent_session",
+  {
+    tokenHash: text("token_hash").primaryKey(),
+    phone: text("phone").notNull(),
+    createdAt: createdAt(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow(),
+    userAgent: text("user_agent"),
+    ip: text("ip"),
+  },
+  (t) => [index("parent_session_phone_idx").on(t.phone), index("parent_session_expires_idx").on(t.expiresAt)],
+);
+
 // ---------------------------------------------------------------------------
 // Notifications (outbox) & audit
 // ---------------------------------------------------------------------------

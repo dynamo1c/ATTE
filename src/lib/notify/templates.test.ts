@@ -69,6 +69,7 @@ describe("templates", () => {
       { kind: "DAY_ABSENCE", student, date: "2026-10-29" },
       { kind: "LEAVE_RECORDED", student, leaveType: "ON_DUTY", from: "2026-10-29", to: "2026-10-29" },
       { kind: "BROADCAST", textEn: "College closed tomorrow.", textKn: "ನಾಳೆ ಕಾಲೇಜಿಗೆ ರಜೆ." },
+      { kind: "LOGIN_OTP", code: "042913", minutes: 10 },
       { kind: "MARKS_PUBLISHED", student, subject: "DSP", partCode: "CIE_T2", partLabel: "Theory test 2", mark: "38.5", maxMarks: "50", cieSoFar: "40.2", cieOutOf: 50, link: null },
       { kind: "LOW_MARKS", student, subject: "DSP", partCode: "CIE_P1", partLabel: "Practical test 1", mark: "AB", maxMarks: "50", cieSoFar: null, cieOutOf: 50, link: "https://x.test" },
     ];
@@ -79,6 +80,15 @@ describe("templates", () => {
           expect(t).not.toMatch(/undefined|null|NaN|\$\{/);
         }
       }
+  });
+
+  it("login code: in every language and channel, with a do-not-share warning", () => {
+    const d = { kind: "LOGIN_OTP", code: "042913", minutes: 10 } as const;
+    for (const lang of ["EN", "KN", "BOTH"] as const) {
+      expect(renderWhatsApp(d, lang)).toContain("042913");
+      expect(renderSms(d, lang)).toContain("042913");
+    }
+    expect(renderWhatsApp(d, "EN")).toContain("Do not share");
   });
 
   it("marks messages: value out of max, Kannada part names, AB spelled out", () => {

@@ -43,14 +43,16 @@ export async function processOutbox(db: DbOrTx, providers: Providers, opts: { no
   const now = opts.now ?? new Date();
   const summary: SendSummary = { sent: 0, failed: 0, retrying: 0, skipped: 0, fallbacks: 0 };
 
+  // Login codes are sent at once and stored masked: an interrupted one is failed, never resent.
   await db.execute(sql`
-    UPDATE notification SET status = 'QUEUED', updated_at = now(), last_error = 'Interrupted while sending; retried'
+    UPDATE notification SET status = CASE WHEN trigger = 'LOGIN_OTP' THEN 'FAILED'::notification_status ELSE 'QUEUED'::notification_status END, updated_at = now(),
+      last_error = CASE WHEN trigger = 'LOGIN_OTP' THEN 'Interrupted while sending; login codes are not resent' ELSE 'Interrupted while sending; retried' END
     WHERE status = 'SENDING' AND updated_at < ${now}::timestamptz - make_interval(mins => ${STUCK_MINUTES})`);
 
   const { rows } = await db.execute<Claimed>(sql`
     WITH picked AS (
       SELECT id FROM notification
-      WHERE status = 'QUEUED' AND scheduled_for <= ${now}::timestamptz
+      WHERE status = 'QUEUED' AND scheduled_for <= ${now}::timestamptz AND trigger <> 'LOGIN_OTP'
       ORDER BY scheduled_for, id
       LIMIT ${opts.limit ?? 200}
       FOR UPDATE SKIP LOCKED
@@ -98,7 +100,7 @@ export async function processOutbox(db: DbOrTx, providers: Providers, opts: { no
     const fallback = res.notOnWhatsApp === true && m.channel === "WHATSAPP" && CRITICAL.has(m.trigger);
     await db.transaction(async (tx) => {
       await tx.update(notification).set({ status: "FAILED", provider: provider.name, lastError: res.error, updatedAt: new Date() }).where(eq(notification.id, m.id));
-      if (fallback) summary.fallbacks += await queueSmsFallback(tx, m);
+      if (fallback) summary.fallbacks += await queueSmsFallback(tx, m, now);
     });
     summary.failed++;
   }
@@ -109,6 +111,7 @@ export async function processOutbox(db: DbOrTx, providers: Providers, opts: { no
 export async function queueSmsFallback(
   tx: Pick<DbOrTx, "insert">,
   m: Pick<Claimed, "id" | "dedupe_key" | "trigger" | "student_id" | "parent_contact_id" | "phone" | "payload" | "language">,
+  now: Date = new Date(),
 ): Promise<number> {
   const added = await tx
     .insert(notification)
@@ -121,7 +124,7 @@ export async function queueSmsFallback(
       channel: "SMS",
       template: m.payload.data.kind,
       payload: { data: m.payload.data, text: renderSms(m.payload.data, m.language ?? "BOTH") },
-      scheduledFor: sendableAt(new Date(), m.trigger),
+      scheduledFor: sendableAt(now, m.trigger),
       fallbackOf: m.id,
     })
     .onConflictDoNothing({ target: notification.dedupeKey })
