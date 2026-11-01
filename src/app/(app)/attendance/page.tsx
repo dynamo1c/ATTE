@@ -3,7 +3,7 @@ import { sql } from "drizzle-orm";
 import { getDb } from "@/db/client";
 import { Badge, Card, Empty, Input, PageHeader, Table, Td, Th, buttonClass } from "@/components/ui";
 import { hodDepartmentIds, isAdmin } from "@/lib/auth/permissions";
-import { addDays, formatDateShort, todayIn } from "@/lib/domain/dates";
+import { addDays, formatDateShort, isIsoDate, todayIn } from "@/lib/domain/dates";
 import { lockState } from "@/lib/domain/marking";
 import { generateSessions } from "@/server/generate-sessions";
 import { listSessions, markableClassIds } from "@/server/attendance-data";
@@ -21,7 +21,7 @@ export default async function AttendancePage(props: PageProps<"/attendance">) {
   const view = (typeof sp.view === "string" && sp.view in VIEWS ? sp.view : "today") as keyof typeof VIEWS;
   const canSeeDept = isAdmin(me.actor) || hodDepartmentIds(me.actor).length > 0;
   const scope = canSeeDept && sp.scope === "department" ? "department" : "mine";
-  const day = typeof sp.day === "string" && /^\d{4}-\d{2}-\d{2}$/.test(sp.day) && sp.day <= today ? sp.day : today;
+  const day = isIsoDate(sp.day) && sp.day <= today ? sp.day : today;
 
   // Make sure today's (and any missed) sessions exist before listing them.
   const classIds = await markableClassIds(me.actor);

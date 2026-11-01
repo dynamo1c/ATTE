@@ -1,5 +1,4 @@
 import { asc, eq } from "drizzle-orm";
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getDb } from "@/db/client";
 import { parentContact } from "@/db/schema";
@@ -10,6 +9,7 @@ import { formatIndianMobile } from "@/lib/domain/phone";
 import { requireStaff } from "@/server/current";
 import { getCurrentTerm, parseId } from "@/server/queries";
 import { canManageStudent, canViewStudent, getStudent } from "@/server/student-data";
+import { StudentAttendanceCard } from "./attendance-card";
 import { addContact, changeBatch, removeContact, updateContact, updateStudentProfile } from "../actions";
 
 const RELATION = { FATHER: "Father", MOTHER: "Mother", GUARDIAN: "Guardian", OTHER: "Other" } as const;
@@ -49,6 +49,8 @@ export default async function StudentPage(props: PageProps<"/students/[id]">) {
         {m?.leftOn && <Badge tone="red">Left class on {formatDateShort(m.leftOn)}</Badge>}
         {m && m.joinedOn > (term?.startsOn ?? "") && <Badge tone="amber">Joined {formatDateShort(m.joinedOn)}</Badge>}
       </div>
+
+      {m && <StudentAttendanceCard studentId={s.id} classId={m.classGroupId} />}
 
       <div className="grid gap-6 xl:grid-cols-2">
         <Card title="Parent / guardian numbers" className="xl:row-span-2">
@@ -114,14 +116,7 @@ export default async function StudentPage(props: PageProps<"/students/[id]">) {
           </Card>
         )}
       </div>
-      <p className="mt-6 text-sm text-slate-500">
-        Attendance and marks for this student appear here in the next phases.{" "}
-        {m && (
-          <Link href={`/classes/${m.classGroupId}`} className="text-blue-700 hover:underline">
-            Back to class
-          </Link>
-        )}
-      </p>
+      <p className="mt-6 text-sm text-slate-500">Marks for this student appear here in the next phase.</p>
     </>
   );
 }

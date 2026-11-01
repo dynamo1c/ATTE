@@ -15,6 +15,13 @@ export function assertIsoDate(value: string): IsoDate {
   return value;
 }
 
+/** True for a real calendar date in YYYY-MM-DD form ("2026-02-31" is false). Use on untrusted input like URL params. */
+export function isIsoDate(value: unknown): value is IsoDate {
+  if (typeof value !== "string" || !ISO_DATE.test(value)) return false;
+  const d = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === value;
+}
+
 function toUtc(date: IsoDate): Date {
   return new Date(`${assertIsoDate(date)}T00:00:00Z`);
 }

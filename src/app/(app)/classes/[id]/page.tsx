@@ -43,7 +43,16 @@ export default async function ClassPage(props: PageProps<"/classes/[id]">) {
         title={`${cls.departmentCode} Sem ${cls.semester}`}
         subtitle={`${cls.departmentName} · ${roster.rows.filter((r) => !r.left_on).length} students (B1: ${b1}, B2: ${b2})`}
         back={{ href: "/classes", label: "Classes" }}
-        actions={<LinkButton href={`/classes/${cls.id}/timetable`} variant="secondary">Timetable</LinkButton>}
+        actions={
+          <>
+            <LinkButton href={`/classes/${cls.id}/attendance`} variant="secondary">
+              Attendance %
+            </LinkButton>
+            <LinkButton href={`/classes/${cls.id}/timetable`} variant="secondary">
+              Timetable
+            </LinkButton>
+          </>
+        }
       />
 
       <Card title="Subjects & teachers" className="mb-6">

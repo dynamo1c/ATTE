@@ -219,3 +219,59 @@ export function formatPercent(pct: number | null): string {
   const floored = Math.floor(pct * 10 + 1e-9) / 10;
   return `${floored.toFixed(1)}%`;
 }
+
+const STANDING_RANK: Record<Standing, number> = { NO_DATA: 0, OK: 1, AT_RISK: 2, SHORTAGE: 3 };
+
+/**
+ * A student's standing under the per-subject rule (docs/PLAN.md §5.5, default until the college
+ * confirms): the worst standing across their subjects. Subjects with no data are ignored.
+ */
+export function worstStanding(standings: readonly Standing[]): Standing {
+  let worst: Standing = "NO_DATA";
+  for (const s of standings) if (STANDING_RANK[s] > STANDING_RANK[worst]) worst = s;
+  return worst;
+}
+
+/** attended / counted >= minPct, in exact arithmetic on the inputs (no float percentage). */
+function meets(attended: number, counted: number, minPct: number): boolean {
+  return attended * 100 >= minPct * counted;
+}
+
+/**
+ * How many more classes the student must attend in a row to reach minPct.
+ * 0 when already there or nothing counted; null when it can never be reached (minPct >= 100 with an absence).
+ */
+export function classesToReach(t: Pick<Tally, "attended" | "counted">, minPct: number): number | null {
+  const { attended: a, counted: c } = t;
+  if (c === 0 || meets(a, c, minPct)) return 0;
+  if (minPct >= 100) return null;
+  let k = Math.max(0, Math.ceil((minPct * c - 100 * a) / (100 - minPct) - 1e-9));
+  while (!meets(a + k, c + k, minPct)) k++;
+  while (k > 0 && meets(a + k - 1, c + k - 1, minPct)) k--;
+  return k;
+}
+
+/**
+ * How many of the next classes the student can miss and still be at or above minPct.
+ * 0 when already below; null when unlimited (minPct <= 0).
+ */
+export function classesCanMiss(t: Pick<Tally, "attended" | "counted">, minPct: number): number | null {
+  const { attended: a, counted: c } = t;
+  if (minPct <= 0) return null;
+  if (!meets(a, c, minPct)) return 0;
+  let j = Math.max(0, Math.floor((100 * a - minPct * c) / minPct + 1e-9));
+  while (j > 0 && !meets(a, c + j, minPct)) j--;
+  while (meets(a, c + j + 1, minPct)) j++;
+  return j;
+}
+
+/**
+ * Standing from the counts themselves. Prefer this over standing(percent(t)): a float percentage
+ * like 3/7·100 can land a hair below a threshold the student actually meets.
+ */
+export function tallyStanding(t: Pick<Tally, "attended" | "counted">, minPct: number, warnPct: number): Standing {
+  if (t.counted === 0) return "NO_DATA";
+  if (!meets(t.attended, t.counted, minPct)) return "SHORTAGE";
+  if (!meets(t.attended, t.counted, warnPct)) return "AT_RISK";
+  return "OK";
+}

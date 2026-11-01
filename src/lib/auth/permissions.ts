@@ -111,6 +111,11 @@ export function canEditCalendar(a: Actor, scope: CalendarScope) {
   return isPrincipal(a) || canManageClass(a, scope.classRef);
 }
 
+/** "Not yet entered" report per teacher: whole college, or the HOD's departments. */
+export function canViewCompliance(a: Actor) {
+  return seesWholeCollege(a) || hodDepartmentIds(a).length > 0;
+}
+
 /** Department filter for list queries: null = all departments. */
 export function visibleDepartmentIds(a: Actor): number[] | null {
   return seesWholeCollege(a) ? null : hodDepartmentIds(a);
@@ -129,6 +134,7 @@ export function navFor(a: Actor): NavItem[] {
   if (anyClass) items.push({ href: "/leaves", label: "Leave & OD" });
   if (anyClass) items.push({ href: "/classes", label: "Classes" });
   if (anyClass) items.push({ href: "/students", label: "Students" });
+  if (anyClass) items.push({ href: "/reports", label: "Reports" });
   if (seesWholeCollege(a) || hodDepartmentIds(a).length > 0) items.push({ href: "/courses", label: "Subjects" });
   items.push({ href: "/calendar", label: "Calendar" });
   if (canViewStaffList(a)) items.push({ href: "/staff", label: "Staff" });

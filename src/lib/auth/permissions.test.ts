@@ -8,6 +8,7 @@ import {
   canManageDepartment,
   canManageSettings,
   canViewClass,
+  canViewCompliance,
   navFor,
   visibleDepartmentIds,
   type Actor,
@@ -86,5 +87,15 @@ describe("permissions", () => {
     expect(labels(hodCs)).toContain("Subjects");
     expect(labels(faculty)).not.toContain("Staff");
     expect(labels(actor([g("FACULTY", 2)]))).not.toContain("Classes");
+    expect(labels(faculty)).toContain("Reports");
+    expect(labels(actor([g("FACULTY", 2)]))).not.toContain("Reports");
+  });
+
+  it("only HOD, principal and admin see who has not entered attendance", () => {
+    expect(canViewCompliance(admin)).toBe(true);
+    expect(canViewCompliance(principal)).toBe(true);
+    expect(canViewCompliance(hodCs)).toBe(true);
+    expect(canViewCompliance(classTeacher)).toBe(false);
+    expect(canViewCompliance(faculty)).toBe(false);
   });
 });

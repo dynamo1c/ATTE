@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addDays, assertIsoDate, dateRange, isoWeekday, todayIn, weekStart } from "./dates";
+import { addDays, assertIsoDate, dateRange, isIsoDate, isoWeekday, todayIn, weekStart } from "./dates";
 
 describe("dates", () => {
   it("knows weekdays (2026-10-31 is a Saturday)", () => {
@@ -34,5 +34,18 @@ describe("dates", () => {
   it("computes today in IST, not UTC", () => {
     // 2026-10-31 20:00 UTC is already 1 Nov 01:30 in India.
     expect(todayIn("Asia/Kolkata", new Date("2026-10-31T20:00:00Z"))).toBe("2026-11-01");
+  });
+});
+
+describe("isIsoDate", () => {
+  it("accepts only real calendar dates", () => {
+    expect(isIsoDate("2026-11-01")).toBe(true);
+    expect(isIsoDate("2024-02-29")).toBe(true);
+    expect(isIsoDate("2026-02-29")).toBe(false);
+    expect(isIsoDate("2026-02-31")).toBe(false);
+    expect(isIsoDate("2026-13-01")).toBe(false);
+    expect(isIsoDate("2026-1-01")).toBe(false);
+    expect(isIsoDate(undefined)).toBe(false);
+    expect(isIsoDate(["2026-11-01"])).toBe(false);
   });
 });

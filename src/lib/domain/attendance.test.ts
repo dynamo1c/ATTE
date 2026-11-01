@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   batchOn,
+  classesCanMiss,
+  classesToReach,
+  tallyStanding,
+  worstStanding,
   computeStudentAttendance,
   evaluateSession,
   formatPercent,
@@ -163,5 +167,64 @@ describe("standing & formatting", () => {
     expect(formatPercent((2 / 3) * 100)).toBe("66.6%");
     expect(formatPercent(100)).toBe("100.0%");
     expect(formatPercent(null)).toBe("—");
+  });
+});
+
+describe("tallyStanding & worstStanding", () => {
+  it("uses exact counts at the threshold", () => {
+    expect(tallyStanding({ attended: 3, counted: 5 }, 60, 70)).toBe("AT_RISK");
+    expect(tallyStanding({ attended: 2, counted: 5 }, 60, 70)).toBe("SHORTAGE");
+    expect(tallyStanding({ attended: 7, counted: 10 }, 60, 70)).toBe("OK");
+    expect(tallyStanding({ attended: 0, counted: 0 }, 60, 70)).toBe("NO_DATA");
+    // 5/8 = 62.5% exactly meets a 62.5% threshold.
+    expect(tallyStanding({ attended: 5, counted: 8 }, 62.5, 70)).toBe("AT_RISK");
+  });
+
+  it("agrees with the float path for every small fraction", () => {
+    for (let c = 1; c <= 120; c++)
+      for (let a = 0; a <= c; a++) expect(tallyStanding({ attended: a, counted: c }, 60, 70)).toBe(standing(percent({ attended: a, counted: c } as never), 60, 70));
+  });
+
+  it("takes the worst subject, ignoring subjects with no data", () => {
+    expect(worstStanding(["OK", "AT_RISK", "NO_DATA"])).toBe("AT_RISK");
+    expect(worstStanding(["OK", "SHORTAGE", "AT_RISK"])).toBe("SHORTAGE");
+    expect(worstStanding(["NO_DATA"])).toBe("NO_DATA");
+    expect(worstStanding([])).toBe("NO_DATA");
+  });
+});
+
+describe("classesToReach & classesCanMiss", () => {
+  it("counts classes needed to climb back to the minimum", () => {
+    // 5/10 = 50%: smallest k with (5+k)/(10+k) >= 60% is 3 (8/13 = 61.5%; 7/12 = 58.3% is not enough).
+    expect(classesToReach({ attended: 5, counted: 10 }, 60)).toBe(3);
+    expect(classesToReach({ attended: 0, counted: 4 }, 60)).toBe(6); // 6/10
+    expect(classesToReach({ attended: 6, counted: 10 }, 60)).toBe(0);
+    expect(classesToReach({ attended: 0, counted: 0 }, 60)).toBe(0);
+    expect(classesToReach({ attended: 9, counted: 10 }, 100)).toBeNull();
+  });
+
+  it("result is always the smallest k that works", () => {
+    for (const m of [50, 60, 62.5, 75])
+      for (let c = 1; c <= 60; c++)
+        for (let a = 0; a <= c; a++) {
+          const k = classesToReach({ attended: a, counted: c }, m)!;
+          expect((a + k) * 100 >= m * (c + k)).toBe(true);
+          if (k > 0) expect((a + k - 1) * 100 >= m * (c + k - 1)).toBe(false);
+        }
+  });
+
+  it("counts classes that can still be missed", () => {
+    expect(classesCanMiss({ attended: 9, counted: 10 }, 60)).toBe(5); // 9/15 = 60%
+    expect(classesCanMiss({ attended: 6, counted: 10 }, 60)).toBe(0);
+    expect(classesCanMiss({ attended: 5, counted: 10 }, 60)).toBe(0);
+    expect(classesCanMiss({ attended: 5, counted: 10 }, 0)).toBeNull();
+    for (let c = 1; c <= 60; c++)
+      for (let a = 0; a <= c; a++) {
+        const j = classesCanMiss({ attended: a, counted: c }, 60)!;
+        if (a * 100 >= 60 * c) {
+          expect(a * 100 >= 60 * (c + j)).toBe(true);
+          expect(a * 100 >= 60 * (c + j + 1)).toBe(false);
+        } else expect(j).toBe(0);
+      }
   });
 });

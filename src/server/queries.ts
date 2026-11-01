@@ -3,6 +3,7 @@ import { and, asc, desc, eq, inArray, lte, sql } from "drizzle-orm";
 import { cache } from "react";
 import { getDb } from "@/db/client";
 import { classGroup, classMembership, collegeSettings, department, roleGrant, staff, term } from "@/db/schema";
+import { classTeacherClassIds, seesWholeCollege, visibleDepartmentIds, type Actor } from "@/lib/auth/permissions";
 import { todayIn } from "@/lib/domain/dates";
 
 export const SEMESTER_LABEL = (n: number) => `Sem ${n}`;
@@ -82,4 +83,27 @@ export function className(c: { departmentCode: string; semester: number }) {
 /** Parse a route id param; null when not a positive integer (render 404). */
 export function parseId(raw: string): number | null {
   return /^\d{1,9}$/.test(raw) && Number(raw) > 0 ? Number(raw) : null;
+}
+
+/** Classes this person may look at in a term: all (admin/principal), own departments (HOD), plus classes they teach or class-teach. */
+export async function listVisibleClasses(a: Actor, termId: number): Promise<ClassRow[]> {
+  const all = await listClasses(termId);
+  if (seesWholeCollege(a)) return all;
+  const depts = new Set(visibleDepartmentIds(a) ?? []);
+  const own = new Set([...classTeacherClassIds(a), ...a.teachingClassIds]);
+  return all.filter((c) => depts.has(c.departmentId) || own.has(c.id));
+}
+
+/** Run `fn` over items with at most `limit` running at once (keeps the DB pool free for other requests). */
+export async function mapLimit<T, R>(items: readonly T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const out = new Array<R>(items.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const i = next++;
+      out[i] = await fn(items[i]);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return out;
 }

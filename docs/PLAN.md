@@ -340,6 +340,16 @@ Demo-ready after phases 0–4 + 6 (mock + test number).
 
 **Progress:** Phase 0 and 1 done (2026-10-31). Schema with DB-level checks, pure rule logic (attendance %, calendar, timetable, reg no, phone) with 62 unit tests, 14 database-constraint tests, deterministic dummy data seed, CI workflow, status page.
 
+**Progress:** Phase 4 done (2026-11-01).
+
+- Percentages are never stored: every page computes them from the raw marks with the tested rules, so a corrected mark or leave notice shows at once. Unentered classes are left out and counted separately.
+- Shortage rule used: **below the minimum in any subject** (theory + lab of a subject combined), per the default in §5.5 until the college confirms. Overall % is shown alongside.
+- Standing is decided from the counts (attended × 100 ≥ min × counted), not from a rounded float.
+- Student page: % per subject (theory, lab, total), "must attend the next N in a row" / "can miss N more", recent absences with leave/OD tags.
+- Class page → Attendance %: every student × subject, date range filter, shortage/at-risk filter.
+- Reports → Attendance shortage (class / department / college, filter by department, semester, level) and Not yet entered (per teacher, HOD/principal/admin only).
+- Whole-college shortage list: ~0.5 s in a production build with full dummy data (21 classes, ~233k marks).
+
 **Progress:** Phase 3 done (2026-11-01). How it behaves:
 
 - Sessions are created from timetable + calendar on demand (attendance pages, dashboard) and by `npm run sessions:generate` nightly. Idempotent.
