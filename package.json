@@ -16,8 +16,11 @@
     "db:seed": "tsx src/db/seed/index.ts",
     "db:reset": "tsx src/db/migrate.ts && tsx src/db/seed/index.ts --reset",
     "db:studio": "drizzle-kit studio",
+    "db:backup": "tsx src/db/backup.ts backup",
+    "db:restore-check": "tsx src/db/backup.ts restore-check",
     "sessions:generate": "tsx src/db/generate-sessions-cli.ts",
-    "notify:run": "tsx src/server/notify/cli.ts"
+    "notify:run": "tsx src/server/notify/cli.ts",
+    "load-test": "tsx tests/load/run.ts"
   },
   "dependencies": {
     "drizzle-orm": "^0.45.4",

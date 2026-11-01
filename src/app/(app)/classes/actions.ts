@@ -11,6 +11,7 @@ import { allowedComponents, findSlotConflicts, isVersionEditable, type SlotDef }
 import { date, int, oneOf, optionalInt, optionalText } from "@/lib/forms";
 import { formAction, UserError } from "@/server/action";
 import { audit } from "@/server/audit";
+import { forgetGeneratedSessions } from "@/server/generate-sessions";
 import { listSlots, listVersions, getOffering } from "@/server/class-data";
 import { ensure, type CurrentStaff } from "@/server/current";
 import { getClass } from "@/server/queries";
@@ -30,6 +31,8 @@ async function managedOffering(me: CurrentStaff, offeringId: number) {
 }
 
 const refresh = (classId: number) => {
+  // Timetable or subjects changed: the next page load must plan this class's sessions again.
+  forgetGeneratedSessions([classId]);
   revalidatePath(`/classes/${classId}`);
   revalidatePath(`/classes/${classId}/timetable`);
 };

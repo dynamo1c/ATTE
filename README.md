@@ -6,7 +6,7 @@ Full design, rules and open questions: **[docs/PLAN.md](docs/PLAN.md)**. Read it
 
 ## Status
 
-Prototype with dummy data. Phases 0–8 done: database, rule logic with tests, dummy data, staff sign-in with roles, setup screens (staff, classes, subjects, teachers, timetables, calendar, students and parent numbers, settings), and attendance: live or from the book, late-change requests with HOD approval, leave/OD notices; attendance % per student and subject, class sheets, shortage lists and the "not yet entered" report; messages to parents (weekly summary, shortage / warning / absence alerts, notices) in English + Kannada through an outbox, with a mock sender and the WhatsApp Cloud API. marks: entry per test (theory, practical, activity, final exam), teacher → HOD → published, internal /50 + final /50 = /100 with the college's formula, low-marks report and parent messages; a parent portal (register number + phone on record + one-time code) showing attendance and published marks for every child linked to the number; Excel downloads (shortage list, class attendance + exam eligibility, monthly register, class marks, classes not entered, message delivery) and print / save-as-PDF for every report plus a student report card. Next: hardening.
+Prototype with dummy data. Phases 0–9 done: database, rule logic with tests, dummy data, staff sign-in with roles, setup screens (staff, classes, subjects, teachers, timetables, calendar, students and parent numbers, settings), and attendance: live or from the book, late-change requests with HOD approval, leave/OD notices; attendance % per student and subject, class sheets, shortage lists and the "not yet entered" report; messages to parents (weekly summary, shortage / warning / absence alerts, notices) in English + Kannada through an outbox, with a mock sender and the WhatsApp Cloud API. marks: entry per test (theory, practical, activity, final exam), teacher → HOD → published, internal /50 + final /50 = /100 with the college's formula, low-marks report and parent messages; a parent portal (register number + phone on record + one-time code) showing attendance and published marks for every child linked to the number; Excel downloads (shortage list, class attendance + exam eligibility, monthly register, class marks, classes not entered, message delivery) and print / save-as-PDF for every report plus a student report card; hardening: audit log screen, backups with a restore check, health check, security headers, error pages, load test. Next: real data import.
 
 ## Demo sign-in (dummy data only)
 
@@ -51,6 +51,9 @@ npm run dev          # open http://localhost:3000
 | `npm run db:studio` | Browse the database in the browser |
 | `npm run sessions:generate` | Create today's classes from timetables (run nightly, see below) |
 | `npm run notify:run` | Queue due parent messages and send queued ones (every 15 min, see below) |
+| `npm run db:backup` | Back up the database to `backups/` (nightly, see below) |
+| `npm run db:restore-check` | Restore the newest backup into a scratch database and compare (weekly) |
+| `npm run load-test -- <url> <users> <seconds>` | Load test a running server with the dummy college |
 
 ## Nightly job
 
@@ -68,6 +71,16 @@ Messages are rows in the `notification` table (the outbox), written in the same 
 - Delivery receipts: point the Meta webhook at `/api/whatsapp/webhook` with `WHATSAPP_VERIFY_TOKEN` and `WHATSAPP_APP_SECRET` set.
 - SMS fallback needs a DLT-registered SMS provider (not added yet). Until then SMS rows fail with "No SMS provider is configured".
 - The Kannada text in `src/lib/notify/templates.ts` must be checked by college staff before templates are submitted.
+
+## Running it for real (checklist)
+
+- **Behind a reverse proxy with HTTPS** (Caddy, nginx or IIS) in front of `npm run build && npm start`. Set `TRUSTED_PROXY_HOPS` to the number of proxies (default 1): the sign-in rate limits use the IP the proxy saw, and a visitor can't fake it.
+- **Scheduled jobs:** `sessions:generate` nightly, `notify:run` every 15 minutes, `db:backup` nightly, `db:restore-check` weekly.
+- **Backups off the machine:** set `BACKUP_COPY_DIR` to a OneDrive / Google Drive synced folder or an external disk. A backup only on the server is lost with the server. Backups contain student data: keep that folder private.
+- **Monitoring:** point an uptime monitor (e.g. UptimeRobot) at `/api/health`. It returns 503 if the database is down and `"messagesJob": "behind"` if the 15-minute job has stopped.
+- **Audit log** (admin / principal): every change, sign-in and Excel download, with before/after. Rows can't be changed or deleted, not even by a bug: the database refuses.
+- Staff are signed out after `SESSION_IDLE_HOURS` (default 72) without use, in case they forget to sign out on a shared computer.
+- Load test result (one Node process, dummy college of 1,264 students): about 46 pages a second at full CPU with no errors; with light use every page answers in about 0.1 s (p95 under 0.75 s). A real morning (100 teachers clicking every 10–20 s) is 5–10 pages a second.
 
 ## Folder layout
 

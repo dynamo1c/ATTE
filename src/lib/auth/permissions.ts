@@ -141,6 +141,11 @@ export function canBroadcast(a: Actor) {
 }
 
 /** Retry / cancel messages and run the sender by hand. */
+/** Read the audit log (who changed what): admin and principal. */
+export function canViewAudit(a: Actor) {
+  return seesWholeCollege(a);
+}
+
 export function canManageOutbox(a: Actor) {
   return isAdmin(a);
 }
@@ -171,6 +176,7 @@ export function navFor(a: Actor): NavItem[] {
   if (canViewStaffList(a)) items.push({ href: "/staff", label: "Staff" });
   if (isAdmin(a)) items.push({ href: "/admin/departments", label: "Departments" });
   if (seesWholeCollege(a)) items.push({ href: "/admin/settings", label: "Settings" });
+  if (canViewAudit(a)) items.push({ href: "/admin/audit", label: "Audit log" });
   return items;
 }
 

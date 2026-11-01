@@ -141,4 +141,9 @@ describe.skipIf(!url)("database constraints", () => {
     expect(await errorCode("INSERT INTO leave_notice (student_id, type, from_date, to_date, created_by) VALUES ($1, 'MEDICAL', '2026-10-10', '2026-10-09', $2)", [s.id, st.id])).toBe(CHECK);
     expect(await errorCode("INSERT INTO leave_notice (student_id, type, from_date, to_date, created_by, status) VALUES ($1, 'MEDICAL', '2026-10-10', '2026-10-10', $2, 'APPROVED')", [s.id, st.id])).toBe(CHECK);
   });
+
+  it("keeps the audit log append-only", async () => {
+    expect(await errorCode("UPDATE audit_log SET action = 'X'")).toBe("42501");
+    expect(await errorCode("DELETE FROM audit_log")).toBe("42501");
+  });
 });

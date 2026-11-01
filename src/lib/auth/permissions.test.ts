@@ -15,6 +15,7 @@ import {
   canViewCompliance,
   canViewMessages,
   navFor,
+  canViewAudit,
   visibleDepartmentIds,
   type Actor,
   type Grant,
@@ -100,6 +101,11 @@ describe("permissions", () => {
     expect([admin, principal, hodCs, classTeacher, faculty].map(canViewMessages)).toEqual([true, true, true, true, false]);
     expect([admin, principal, hodCs, classTeacher, faculty].map(canBroadcast)).toEqual([true, true, false, false, false]);
     expect([admin, principal, hodCs].map(canManageOutbox)).toEqual([true, false, false]);
+  });
+
+  it("audit log: admin and principal only", () => {
+    expect([admin, principal, hodCs, classTeacher, faculty].map(canViewAudit)).toEqual([true, true, false, false, false]);
+    expect(navFor(hodCs).map((n) => n.label)).not.toContain("Audit log");
   });
 
   it("marks: part teacher enters CIE, only HOD/admin enter finals and publish", () => {

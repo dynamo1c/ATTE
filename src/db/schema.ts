@@ -806,5 +806,5 @@ export const auditLog = pgTable(
     after: jsonb("after"),
     reason: text("reason"),
   },
-  (t) => [index("audit_log_entity_idx").on(t.entity, t.entityId), index("audit_log_at_idx").on(t.at)],
+  (t) => [index("audit_log_entity_idx").on(t.entity, t.entityId), index("audit_log_at_idx").on(t.at), index("audit_log_actor_idx").on(t.actorStaffId, t.id)],
 );

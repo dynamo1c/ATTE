@@ -5,7 +5,8 @@ import "server-only";
  */
 import { sql } from "drizzle-orm";
 import { getDb } from "@/db/client";
-import { canViewClass, canViewCompliance, canViewMessages } from "@/lib/auth/permissions";
+import { changedFields } from "@/lib/audit-diff";
+import { canViewAudit, canViewClass, canViewCompliance, canViewMessages } from "@/lib/auth/permissions";
 import { formatPercent, percent, type Standing, type Tally } from "@/lib/domain/attendance";
 import { formatDateShort, isIsoDate, todayIn } from "@/lib/domain/dates";
 import { formatEntry, formatMark, type MarkEntry } from "@/lib/domain/marks";
@@ -17,7 +18,7 @@ import { getClassAttendance, isCurrent } from "./attendance-report";
 import type { CurrentStaff } from "./current";
 import { getClassMarks, STATUS_LABEL } from "./marks-data";
 import { getClass, getCurrentTerm, getSettings, listVisibleClasses, parseId } from "./queries";
-import { loadShortage, loadUnentered, messageFilters, messageWhere, shortageFilters } from "./report-data";
+import { auditFilters, loadAudit, loadShortage, loadUnentered, messageFilters, messageWhere, shortageFilters } from "./report-data";
 
 type Params = Record<string, string | string[] | undefined>;
 export type ExportResult = { ok: true; file: string; sheets: Sheet[] } | { ok: false; status: 403 | 404; error: string };
@@ -348,7 +349,39 @@ async function messages(me: CurrentStaff, sp: Params): Promise<ExportResult> {
   };
 }
 
+async function auditLog(me: CurrentStaff, sp: Params): Promise<ExportResult> {
+  if (!canViewAudit(me.actor)) return forbidden("the audit log");
+  const f = auditFilters(sp);
+  const rows = await loadAudit(f, MESSAGE_EXPORT_LIMIT);
+  const filters = [f.action, f.entity && `${f.entity}${f.entityId ? ` #${f.entityId}` : ""}`, f.from && `from ${f.from}`, f.to && `to ${f.to}`].filter(Boolean).join(", ");
+  return {
+    ok: true,
+    file: fileName("audit-log", today()),
+    sheets: [
+      {
+        name: "Audit log",
+        title: "Audit log",
+        notes: [`${filters || "Everything"} · newest first${rows.length === MESSAGE_EXPORT_LIMIT ? ` · first ${MESSAGE_EXPORT_LIMIT.toLocaleString("en-IN")} only` : ""}`],
+        header: ["When", "Who", "Action", "What", "Id", "Reason", "Changed", "Before", "After"],
+        rows: rows.map((r) => [
+          r.at,
+          r.actor_name ?? "System / parent",
+          r.action,
+          r.entity,
+          r.entity_id,
+          r.reason,
+          changedFields(r.before, r.after).map((c) => `${c.field}: ${c.before} → ${c.after}`).join("; ") || null,
+          r.before === null ? null : JSON.stringify(r.before),
+          r.after === null ? null : JSON.stringify(r.after),
+        ]),
+        widths: [19, 22, 16, 18, 8, 30, 50, 40, 40],
+      },
+    ],
+  };
+}
+
 export const EXPORTS = {
+  audit: auditLog,
   shortage,
   "class-attendance": classAttendance,
   register,

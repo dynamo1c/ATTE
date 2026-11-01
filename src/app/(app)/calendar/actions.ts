@@ -9,6 +9,7 @@ import { canEditCalendar, type CalendarScope } from "@/lib/auth/permissions";
 import { checkbox, date, int, oneOf, optionalInt, optionalText } from "@/lib/forms";
 import { formAction, UserError } from "@/server/action";
 import { audit } from "@/server/audit";
+import { forgetGeneratedSessions } from "@/server/generate-sessions";
 import { ensure, type CurrentStaff } from "@/server/current";
 import { getClass } from "@/server/queries";
 
@@ -85,6 +86,7 @@ export const addCalendarDay = formAction(
       }
       await audit(tx, { actorStaffId: me.id, action: "CREATE", entity: "calendar_day", entityId: row.id, after: { ...row, cancelledSessions: affected.length } });
     });
+    forgetGeneratedSessions();
     revalidatePath("/calendar");
     return { ok: true, message: affected.length ? `Saved. ${affected.length} classes on that day were cancelled.` : "Saved." };
   },
@@ -115,6 +117,7 @@ export const deleteCalendarDay = formAction(z.object({ id: int("Entry") }), asyn
     await audit(tx, { actorStaffId: me.id, action: "DELETE", entity: "calendar_day", entityId: id, before: row, after: { restoredSessions: back.length } });
     return back.length;
   });
-  revalidatePath("/calendar");
+  forgetGeneratedSessions();
+    revalidatePath("/calendar");
   return { ok: true, message: restored ? `Removed. ${restored} cancelled classes were restored.` : "Removed." };
 });

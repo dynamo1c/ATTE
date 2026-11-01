@@ -4,8 +4,8 @@ import { NextResponse, type NextRequest } from "next/server";
  * Optimistic check only: no session cookie → send to login.
  * Real checks (valid session, permissions) happen on the server in every page and action.
  */
-// The WhatsApp webhook is called by Meta (no cookie); it checks its own signature.
-const PUBLIC_PATHS = ["/login", "/api/whatsapp"];
+// The WhatsApp webhook is called by Meta (no cookie); it checks its own signature. Health is for uptime monitors.
+const PUBLIC_PATHS = ["/login", "/api/whatsapp", "/api/health"];
 
 export function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl;

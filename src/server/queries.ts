@@ -107,3 +107,6 @@ export async function mapLimit<T, R>(items: readonly T[], limit: number, fn: (it
   await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
   return out;
 }
+
+/** Every staff member (active or not), for filter menus. */
+export const listStaffNames = cache(async () => getDb().select({ id: staff.id, name: staff.name }).from(staff).orderBy(asc(staff.name)));

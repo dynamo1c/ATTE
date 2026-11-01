@@ -19,7 +19,7 @@ export default async function Dashboard() {
   // Today's classes must exist before counting/listing them (the nightly job may not have run).
   // Principal/admin counts cover the whole college, so every class must be generated, not only markable ones.
   const classIds = seesWholeCollege(me.actor) ? null : await markableClassIds(me.actor);
-  await generateSessions(db, { classIds: classIds ?? undefined, until: today });
+  await generateSessions(db, { classIds: classIds ?? undefined, until: today, reuse: true });
 
   // Which classes the counts cover: whole college, own department(s), or own class(es).
   const deptIds = visibleDepartmentIds(me.actor);

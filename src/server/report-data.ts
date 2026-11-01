@@ -7,7 +7,7 @@ import { sql, type SQL } from "drizzle-orm";
 import { getDb } from "@/db/client";
 import { classTeacherClassIds, visibleDepartmentIds, type Actor } from "@/lib/auth/permissions";
 import { classesToReach, percent, type Standing } from "@/lib/domain/attendance";
-import { todayIn } from "@/lib/domain/dates";
+import { isIsoDate, todayIn } from "@/lib/domain/dates";
 import { TRIGGER_LABEL, type Trigger } from "@/lib/notify/rules";
 import { getClassAttendance, isCurrent } from "./attendance-report";
 import { generateSessions } from "./generate-sessions";
@@ -86,7 +86,7 @@ export type UnenteredRow = {
 export async function loadUnentered(actor: Actor, classes: readonly ClassRow[]) {
   const today = todayIn();
   // Counts are only complete if every class up to today exists (the nightly job may not have run).
-  await generateSessions(getDb(), { classIds: visibleDepartmentIds(actor) === null ? undefined : classes.map((c) => c.id), until: today });
+  await generateSessions(getDb(), { classIds: visibleDepartmentIds(actor) === null ? undefined : classes.map((c) => c.id), until: today, reuse: true });
   const { rows } = await getDb().execute<UnenteredRow>(sql`
     SELECT cs.id AS session_id, to_char(cs.date, 'YYYY-MM-DD') AS date, to_char(p.starts_at, 'HH24:MI') AS starts_at,
            c.short_name AS subject, cs.component::text, cs.batch_scope::text, d.code || ' Sem ' || cg.semester AS class_name,
@@ -137,4 +137,64 @@ export function messageWhere(actor: Actor, termId: number, f: ReturnType<typeof 
     ${f.status ? sql`AND n.status = ${f.status}` : sql``}
     ${f.trigger ? sql`AND n.trigger = ${f.trigger}` : sql``}
     ${f.q ? sql`AND (s.reg_no = ${f.q} OR s.name ILIKE ${`%${f.q}%`} OR n.phone LIKE ${`%${f.q.replace(/\D/g, "") || "x"}`})` : sql``}`;
+}
+
+// ---------------------------------------------------------------------------
+// Audit log
+// ---------------------------------------------------------------------------
+
+export type AuditRow = {
+  id: number;
+  at: string;
+  actor_id: number | null;
+  actor_name: string | null;
+  action: string;
+  entity: string;
+  entity_id: string;
+  before: unknown;
+  after: unknown;
+  reason: string | null;
+};
+
+export function auditFilters(sp: Params) {
+  const str = (k: string, max = 60) => (typeof sp[k] === "string" && sp[k] ? (sp[k] as string).trim().slice(0, max) : null);
+  const actor = str("actor");
+  const before = str("before");
+  return {
+    action: str("action"),
+    entity: str("entity"),
+    entityId: str("id"),
+    actorId: actor && /^\d+$/.test(actor) ? Number(actor) : actor === "none" ? ("none" as const) : null,
+    from: isIsoDate(sp.from) ? (sp.from as string) : null,
+    to: isIsoDate(sp.to) ? (sp.to as string) : null,
+    /** Keyset paging: rows older than this id. */
+    before: before && /^\d+$/.test(before) ? Number(before) : null,
+  };
+}
+
+export async function loadAudit(f: ReturnType<typeof auditFilters>, limit: number): Promise<AuditRow[]> {
+  const { rows } = await getDb().execute<AuditRow>(sql`
+    SELECT a.id, to_char(a.at AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM-DD HH24:MI:SS') AS at, a.actor_staff_id AS actor_id, s.name AS actor_name,
+           a.action, a.entity, a.entity_id, a.before, a.after, a.reason
+    FROM audit_log a LEFT JOIN staff s ON s.id = a.actor_staff_id
+    WHERE true
+      ${f.action ? sql`AND a.action = ${f.action}` : sql``}
+      ${f.entity ? sql`AND a.entity = ${f.entity}` : sql``}
+      ${f.entityId ? sql`AND a.entity_id = ${f.entityId}` : sql``}
+      ${f.actorId === "none" ? sql`AND a.actor_staff_id IS NULL` : f.actorId !== null ? sql`AND a.actor_staff_id = ${f.actorId}` : sql``}
+      ${f.from ? sql`AND a.at >= (${f.from}::date)::timestamp AT TIME ZONE 'Asia/Kolkata'` : sql``}
+      ${f.to ? sql`AND a.at < (${f.to}::date + 1)::timestamp AT TIME ZONE 'Asia/Kolkata'` : sql``}
+      ${f.before ? sql`AND a.id < ${f.before}` : sql``}
+    ORDER BY a.id DESC
+    LIMIT ${limit}`);
+  return rows;
+}
+
+/** Values for the filter menus. */
+export async function auditChoices() {
+  const { rows } = await getDb().execute<{ kind: "action" | "entity"; value: string }>(sql`
+    SELECT 'action' AS kind, action AS value FROM audit_log GROUP BY action
+    UNION ALL SELECT 'entity', entity FROM audit_log GROUP BY entity
+    ORDER BY 1, 2`);
+  return { actions: rows.filter((r) => r.kind === "action").map((r) => r.value), entities: rows.filter((r) => r.kind === "entity").map((r) => r.value) };
 }

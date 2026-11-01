@@ -3,19 +3,21 @@ import { createHash, randomBytes } from "node:crypto";
 import { and, eq, gt, ne } from "drizzle-orm";
 import { cookies, headers } from "next/headers";
 import { getDb } from "@/db/client";
+import { clientIp } from "@/lib/auth/client-ip";
 import { staffSession } from "@/db/schema";
 
 export const SESSION_COOKIE = "mei_session";
 const SESSION_DAYS = 30;
 /** Don't write last_seen_at on every request. */
 const TOUCH_INTERVAL_MS = 15 * 60 * 1000;
+/** Signed out after this long without use (shared lab / staff-room computers), even inside the 30 days. */
+const IDLE_MS = (Number(process.env.SESSION_IDLE_HOURS) || 72) * 60 * 60 * 1000;
 
 const hashToken = (token: string) => createHash("sha256").update(token).digest("hex");
 
 export async function requestMeta() {
   const h = await headers();
-  const ip = h.get("x-forwarded-for")?.split(",")[0]?.trim() || h.get("x-real-ip") || null;
-  return { ip, userAgent: h.get("user-agent")?.slice(0, 300) ?? null };
+  return { ip: clientIp(h.get("x-forwarded-for"), process.env.TRUSTED_PROXY_HOPS), userAgent: h.get("user-agent")?.slice(0, 300) ?? null };
 }
 
 /** Call only from a Server Action (sets a cookie). */
@@ -45,7 +47,12 @@ export async function readSessionStaffId(): Promise<number | null> {
     .where(and(eq(staffSession.tokenHash, tokenHash), gt(staffSession.expiresAt, new Date())))
     .limit(1);
   if (!row) return null;
-  if (Date.now() - row.lastSeenAt.getTime() > TOUCH_INTERVAL_MS) {
+  const idle = Date.now() - row.lastSeenAt.getTime();
+  if (idle > IDLE_MS) {
+    await db.delete(staffSession).where(eq(staffSession.tokenHash, tokenHash));
+    return null;
+  }
+  if (idle > TOUCH_INTERVAL_MS) {
     await db.update(staffSession).set({ lastSeenAt: new Date() }).where(eq(staffSession.tokenHash, tokenHash));
   }
   return row.staffId;

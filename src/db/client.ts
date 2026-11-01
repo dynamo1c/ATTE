@@ -9,8 +9,19 @@ function requireDatabaseUrl(): string {
 }
 
 export function createPool(url = requireDatabaseUrl()) {
-  // Every connection works in college time, so CURRENT_DATE matches the wall clock in Bengaluru.
-  return new Pool({ connectionString: url, max: 10, options: "-c timezone=Asia/Kolkata" });
+  const timeout = Number(process.env.DB_STATEMENT_TIMEOUT_MS) || 60_000;
+  const pool = new Pool({
+    connectionString: url,
+    max: Number(process.env.DB_POOL_MAX) || 10,
+    // Fail fast instead of hanging a request when the database is down or the pool is exhausted.
+    connectionTimeoutMillis: 10_000,
+    // Every connection works in college time, so CURRENT_DATE matches the wall clock in Bengaluru.
+    // A runaway query or a transaction left open can't hold locks forever.
+    options: `-c timezone=Asia/Kolkata -c statement_timeout=${timeout} -c idle_in_transaction_session_timeout=${timeout}`,
+  });
+  // An idle connection dropped by the server (restart, network) emits 'error'; unhandled, it would crash the app.
+  pool.on("error", (err) => console.error("Database connection lost (the pool will reconnect):", err.message));
+  return pool;
 }
 
 export function createDb(pool = createPool()) {

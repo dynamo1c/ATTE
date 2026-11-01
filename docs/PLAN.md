@@ -357,6 +357,16 @@ Demo-ready after phases 0–4 + 6 (mock + test number).
 
 **Progress:** Phase 0 and 1 done (2026-10-31). Schema with DB-level checks, pure rule logic (attendance %, calendar, timetable, reg no, phone) with 62 unit tests, 14 database-constraint tests, deterministic dummy data seed, CI workflow, status page.
 
+**Progress:** Phase 9 done (2026-11-01).
+
+- Security review: all 24 data-changing server actions check permission (directly or through a checking helper), every page that loads by id checks access, no raw SQL from input, 0 known vulnerable packages. Fixed: the IP used for rate limits came from a header the visitor can fake (now the rightmost `TRUSTED_PROXY_HOPS` entry); added security headers (no framing, nosniff, same-origin referrer, form-action self, HSTS in production, no X-Powered-By); staff idle sign-out (72 h).
+- Audit log screen (admin / principal) with filters, change summary, full before/after and Excel. `audit_log` is append-only in the database (trigger).
+- Backups: `db:backup` (pg_dump custom format, atomic write, header check, rotation, off-machine copy) and `db:restore-check` (restores into a scratch database and compares every key table). Verified: all rows restored.
+- Health check `/api/health` (database + message-job lag). Friendly error pages that show a reference code instead of internals; custom not-found.
+- Database pool: query and idle-transaction timeouts, connection timeout, and a handler so a dropped connection can't crash the app.
+- Load test (`npm run load-test`): 40 users clicking with no pause for 60 s, 0 errors, ~46 pages/s on one process. Found: dashboard and attendance list re-planned every class's whole term on each load (~120 ms for the college); now remembered per class and redone only when a timetable or the calendar changes (p50 under load 1.6 s → 1.0 s; ~0.1 s under normal use).
+- Not done here: server-side scheduled jobs are still started by Task Scheduler / cron (pg-boss not needed at this size).
+
 **Progress:** Phase 8 done (2026-11-01).
 
 - Excel (`/exports/<kind>`, same filters and permission as the screen, every download audited as EXPORT): attendance shortage list (college / department / semester), class attendance with exam eligibility by attendance + a by-subject sheet, monthly register in the book layout (one column per class: P, L, A, P*, E, A*, ?), class marks (summary + one sheet per subject with every test and its status), classes not entered, parent message delivery (up to 20,000 rows).

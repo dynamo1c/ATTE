@@ -25,7 +25,7 @@ export default async function AttendancePage(props: PageProps<"/attendance">) {
 
   // Make sure today's (and any missed) sessions exist before listing them.
   const classIds = await markableClassIds(me.actor);
-  await generateSessions(getDb(), { classIds: classIds ?? undefined, until: today });
+  await generateSessions(getDb(), { classIds: classIds ?? undefined, until: today, reuse: true });
 
   const settings = await getSettings();
   const range = view === "pending" ? { from: addDays(today, -45), to: today } : view === "date" ? { from: day, to: day } : { from: today, to: today };

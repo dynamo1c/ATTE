@@ -15,12 +15,37 @@ import { resolveDay, type CalendarEntry } from "@/lib/domain/calendar";
 import { dateRange, type IsoDate } from "@/lib/domain/dates";
 import { planSessionsForDay, type VersionDef } from "@/lib/domain/timetable";
 
-export async function generateSessions(db: Db, opts: { classIds?: number[]; until: IsoDate }): Promise<number> {
-  const classes = await db
+/**
+ * Classes already generated through a date by this server process, so busy pages (dashboard, attendance
+ * list) don't re-plan every class's whole term on every load. Cleared when a timetable or the calendar
+ * changes, and trusted for 10 minutes at most (another server process may have changed things).
+ */
+const generatedThrough = new Map<number, { until: IsoDate; at: number }>();
+const REUSE_MS = 10 * 60_000;
+
+/** Call after changing a class's timetable (or the calendar, for all classes). */
+export function forgetGeneratedSessions(classIds?: readonly number[]): void {
+  if (!classIds) generatedThrough.clear();
+  else for (const id of classIds) generatedThrough.delete(id);
+}
+
+/**
+ * `reuse`: skip classes this process generated through `until` recently. Only for page loads on the
+ * shared pool, never inside a transaction (a rollback would leave the memo wrong).
+ */
+export async function generateSessions(db: Db, opts: { classIds?: number[]; until: IsoDate; reuse?: boolean }): Promise<number> {
+  const found = await db
     .select({ id: classGroup.id, departmentId: classGroup.departmentId, startsOn: term.startsOn, endsOn: term.endsOn })
     .from(classGroup)
     .innerJoin(term, eq(term.id, classGroup.termId))
     .where(and(lte(term.startsOn, opts.until), opts.classIds ? inArray(classGroup.id, opts.classIds.length ? opts.classIds : [-1]) : undefined));
+  const now = Date.now();
+  const classes = opts.reuse
+    ? found.filter((c) => {
+        const g = generatedThrough.get(c.id);
+        return !(g && g.until >= opts.until && now - g.at < REUSE_MS);
+      })
+    : found;
   if (classes.length === 0) return 0;
 
   const minStart = classes.reduce((m, c) => (c.startsOn < m ? c.startsOn : m), classes[0].startsOn);
@@ -53,6 +78,8 @@ export async function generateSessions(db: Db, opts: { classIds?: number[]; unti
       created += rows.length;
     }
   }
+  // Only after every class succeeded (an error above throws past this, so nothing is remembered wrongly).
+  if (opts.reuse) for (const c of classes) generatedThrough.set(c.id, { until: opts.until, at: now });
   return created;
 }
 
