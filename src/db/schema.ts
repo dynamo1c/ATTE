@@ -535,6 +535,33 @@ export const attendanceSubmission = pgTable("attendance_submission", {
   submittedAt: timestamp("submitted_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+/**
+ * A change to attendance after the edit window closed. The teacher proposes it with a reason;
+ * the HOD (or admin) approves, and only then is it applied.
+ */
+export const attendanceEditRequest = pgTable(
+  "attendance_edit_request",
+  {
+    id: id(),
+    sessionId: integer("session_id").notNull().references(() => classSession.id),
+    requestedBy: integer("requested_by").notNull().references(() => staff.id),
+    reason: text("reason").notNull(),
+    /** [{ studentId, from, to }] — only the students whose mark changes. */
+    changes: jsonb("changes").notNull(),
+    /** Session version when requested; approval fails if attendance changed since. */
+    baseVersion: integer("base_version").notNull(),
+    status: leaveStatus("status").notNull().default("PENDING"),
+    decidedBy: integer("decided_by").references(() => staff.id),
+    decidedAt: timestamp("decided_at", { withTimezone: true }),
+    decisionNote: text("decision_note"),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    check("attendance_edit_request_decided", sql`${t.status} = 'PENDING' OR (${t.decidedBy} IS NOT NULL AND ${t.decidedAt} IS NOT NULL)`),
+    index("attendance_edit_request_status_idx").on(t.status, t.createdAt),
+  ],
+);
+
 export const leaveNotice = pgTable(
   "leave_notice",
   {

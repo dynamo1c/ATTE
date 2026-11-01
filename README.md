@@ -6,7 +6,7 @@ Full design, rules and open questions: **[docs/PLAN.md](docs/PLAN.md)**. Read it
 
 ## Status
 
-Prototype with dummy data. Phases 0–2 done: database, rule logic with tests, dummy data, staff sign-in with roles, and setup screens (staff, classes, subjects, teachers, timetables, calendar, students and parent numbers, settings). Next: marking attendance.
+Prototype with dummy data. Phases 0–3 done: database, rule logic with tests, dummy data, staff sign-in with roles, setup screens (staff, classes, subjects, teachers, timetables, calendar, students and parent numbers, settings), and attendance: live or from the book, late-change requests with HOD approval, leave/OD notices. Next: attendance % dashboards and reports.
 
 ## Demo sign-in (dummy data only)
 
@@ -47,6 +47,14 @@ npm run dev          # open http://localhost:3000
 | `npm run db:seed` | Load dummy data into an empty database |
 | `npm run db:reset` | Wipe + migrate + reseed. Refuses to run against a non-local database |
 | `npm run db:studio` | Browse the database in the browser |
+| `npm run sessions:generate` | Create today's classes from timetables (run nightly, see below) |
+
+## Nightly job
+
+Classes are created from the timetable + calendar. Pages create them on demand, but schedule this once a day (≈00:30) so HOD "not yet entered" counts are always complete. It is safe to run any number of times.
+
+- Windows Task Scheduler: action `npm`, arguments `run sessions:generate`, start in the project folder.
+- Linux cron: `30 0 * * * cd /path/to/att && npm run sessions:generate`
 
 ## Folder layout
 

@@ -43,7 +43,7 @@ function pgError(e: unknown): { code?: string; constraint?: string; detail?: str
   return null;
 }
 
-export function toActionError(e: unknown): ActionState {
+export function toActionError(e: unknown): NonNullable<ActionState> {
   if (e instanceof UserError) return { ok: false, error: e.message, fieldErrors: e.fieldErrors };
   if (e instanceof ForbiddenError) return { ok: false, error: e.message };
   const pg = pgError(e);

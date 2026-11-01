@@ -5,6 +5,8 @@ import { Badge, Card, Empty, PageHeader, Stat, Table, Td, Th } from "@/component
 import { classTeacherClassIds, seesWholeCollege, visibleDepartmentIds } from "@/lib/auth/permissions";
 import { formatDateLong, todayIn } from "@/lib/domain/dates";
 import { requireStaff } from "@/server/current";
+import { generateSessions } from "@/server/generate-sessions";
+import { markableClassIds } from "@/server/attendance-data";
 import { getCurrentTerm } from "@/server/queries";
 
 export const metadata = { title: "Dashboard · MEI Attendance" };
@@ -14,6 +16,9 @@ export default async function Dashboard() {
   const currentTerm = await getCurrentTerm();
   const today = todayIn();
   const db = getDb();
+  // Today's classes must exist before counting/listing them (the nightly job may not have run).
+  const classIds = await markableClassIds(me.actor);
+  await generateSessions(db, { classIds: classIds ?? undefined, until: today });
 
   // Which classes the counts cover: whole college, own department(s), or own class(es).
   const deptIds = visibleDepartmentIds(me.actor);
@@ -104,13 +109,17 @@ export default async function Dashboard() {
                     {s.short_name} {s.component === "PRACTICAL" && <Badge tone="violet">Lab</Badge>}
                   </Td>
                   <Td>{s.batch_scope === "ALL" ? "Whole class" : s.batch_scope}</Td>
-                  <Td>{s.status === "HELD" ? <Badge tone="green">Marked</Badge> : s.status === "SCHEDULED" ? <Badge tone="amber">Pending</Badge> : <Badge>{s.status.replace("_", " ").toLowerCase()}</Badge>}</Td>
+                  <Td>
+                    <Link href={`/attendance/${s.id}`} className="hover:underline">
+                      {s.status === "HELD" ? <Badge tone="green">Marked</Badge> : s.status === "SCHEDULED" ? <Badge tone="amber">Take attendance →</Badge> : <Badge>{s.status.replace("_", " ").toLowerCase()}</Badge>}
+                    </Link>
+                  </Td>
                 </tr>
               ))}
             </tbody>
           </Table>
         )}
-        <p className="mt-3 text-xs text-slate-500">Marking attendance arrives in the next phase.</p>
+        <Link href="/attendance" className="mt-3 inline-block text-sm text-blue-700 hover:underline">All attendance →</Link>
       </Card>
 
       {!currentTerm && (

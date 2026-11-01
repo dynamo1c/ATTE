@@ -2,7 +2,7 @@ import "server-only";
 import { and, asc, desc, eq, inArray, lte, sql } from "drizzle-orm";
 import { cache } from "react";
 import { getDb } from "@/db/client";
-import { classGroup, classMembership, department, roleGrant, staff, term } from "@/db/schema";
+import { classGroup, classMembership, collegeSettings, department, roleGrant, staff, term } from "@/db/schema";
 import { todayIn } from "@/lib/domain/dates";
 
 export const SEMESTER_LABEL = (n: number) => `Sem ${n}`;
@@ -15,6 +15,12 @@ export const getCurrentTerm = cache(async () => {
   if (started) return started;
   const [any] = await db.select().from(term).orderBy(desc(term.startsOn)).limit(1);
   return any ?? null;
+});
+
+export const getSettings = cache(async () => {
+  const [s] = await getDb().select().from(collegeSettings).where(eq(collegeSettings.id, 1));
+  if (!s) throw new Error("College settings missing — run the seed or create the settings row.");
+  return s;
 });
 
 export const listDepartments = cache(async () => getDb().select().from(department).orderBy(asc(department.code)));

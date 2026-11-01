@@ -340,6 +340,16 @@ Demo-ready after phases 0–4 + 6 (mock + test number).
 
 **Progress:** Phase 0 and 1 done (2026-10-31). Schema with DB-level checks, pure rule logic (attendance %, calendar, timetable, reg no, phone) with 62 unit tests, 14 database-constraint tests, deterministic dummy data seed, CI workflow, status page.
 
+**Progress:** Phase 3 done (2026-11-01). How it behaves:
+
+- Sessions are created from timetable + calendar on demand (attendance pages, dashboard) and by `npm run sessions:generate` nightly. Idempotent.
+- Marking screen: everyone Present by default (students on approved leave/OD start Absent and show a hint); tap to toggle, small L for late; or type roll numbers from the book ("3, 12, 27", "5-8"). Where two students share a roll (detained student), both show and accept the 5-digit year+roll.
+- Saves are all-or-nothing for the whole class list, idempotent (retry-safe id), and version-checked (two people saving at once: second is refused, marks kept as a draft on the phone to restore).
+- Drafts survive reloads and lost connections (stored per class in the browser).
+- Edit window (Settings, default 3 days): after it, teacher changes become requests with a reason; HOD/admin approves and they apply only if nothing changed since. HOD/admin may edit locked classes directly (audited).
+- "Not held" with reason (removes marks, kept in audit); can be reopened.
+- Leave/OD notices: class teacher records → HOD approves; HOD/admin entries are approved at once. Overlapping notices are blocked.
+
 **Progress:** Phase 2 done (2026-11-01). Decisions taken while building it:
 
 - **Own auth instead of Better Auth.** Staff already live in our `staff` table. Passwords use Node's built-in scrypt; sessions are random tokens stored only as SHA-256 hashes, 30-day cookies. Login is rate-limited (5 failures per phone / 30 per IP in 15 min) and always runs one hash check so timing doesn't reveal which phones exist. New staff and resets get a one-time temporary password and must change it at first sign-in. Fewer moving parts for a lecturer to maintain.

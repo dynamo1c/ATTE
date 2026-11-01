@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   canEditCalendar,
+  canEditLockedAttendance,
+  canMarkSession,
   canManageClass,
   canManageClassStudents,
   canManageDepartment,
@@ -62,6 +64,18 @@ describe("permissions", () => {
     expect(canViewClass(faculty, csSem3)).toBe(false);
     expect(canManageClassStudents(faculty, csSem5)).toBe(false);
     expect(canEditCalendar(faculty, { kind: "CLASS", classRef: csSem5 })).toBe(false);
+  });
+
+  it("marking: assigned teacher, department substitute, HOD, admin — not principal or other departments", () => {
+    const session = { classRef: csSem3, assignedStaffIds: [77] };
+    expect(canMarkSession(actor([g("FACULTY", 6)]), { ...session, assignedStaffIds: [1] })).toBe(true); // assigned (staffId 1)
+    expect(canMarkSession(faculty, session)).toBe(true); // CS faculty as substitute
+    expect(canMarkSession(actor([g("FACULTY", 6)]), session)).toBe(false); // ME faculty
+    expect(canMarkSession(actor([g("FACULTY", null)]), session)).toBe(false); // common staff, not assigned
+    expect(canMarkSession(principal, session)).toBe(false);
+    expect(canMarkSession(hodCs, session)).toBe(true);
+    expect(canEditLockedAttendance(faculty, csSem3)).toBe(false);
+    expect(canEditLockedAttendance(hodCs, csSem3)).toBe(true);
   });
 
   it("builds navigation from roles", () => {

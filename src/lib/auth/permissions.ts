@@ -77,6 +77,31 @@ export function canViewClass(a: Actor, c: ClassRef) {
   return canViewDepartment(a, c.departmentId) || classTeacherClassIds(a).includes(c.id) || a.teachingClassIds.includes(c.id);
 }
 
+/**
+ * Who may take attendance for a class session: its assigned teacher(s), any faculty of the
+ * class's department (substitute), the HOD, or the admin. Principal is view-only.
+ */
+export function canMarkSession(a: Actor, s: { classRef: ClassRef; assignedStaffIds: readonly number[] }) {
+  if (isAdmin(a) || hodDepartmentIds(a).includes(s.classRef.departmentId)) return true;
+  if (s.assignedStaffIds.includes(a.staffId)) return true;
+  return a.grants.some((g) => g.role === "FACULTY" && g.departmentId === s.classRef.departmentId);
+}
+
+/** Change attendance after the edit window without a request (HOD/admin). */
+export function canEditLockedAttendance(a: Actor, c: ClassRef) {
+  return isAdmin(a) || hodDepartmentIds(a).includes(c.departmentId);
+}
+
+/** Approve late edit requests and leave notices for a class. */
+export function canApproveForClass(a: Actor, c: ClassRef) {
+  return canEditLockedAttendance(a, c);
+}
+
+/** Record leave / on-duty notices (approval may still be needed). */
+export function canRecordLeave(a: Actor, c: ClassRef) {
+  return canManageClassStudents(a, c);
+}
+
 export type CalendarScope = { kind: "COLLEGE" } | { kind: "DEPARTMENT"; departmentId: number } | { kind: "CLASS"; classRef: ClassRef };
 
 export function canEditCalendar(a: Actor, scope: CalendarScope) {
@@ -99,6 +124,9 @@ export interface NavItem {
 export function navFor(a: Actor): NavItem[] {
   const items: NavItem[] = [{ href: "/", label: "Dashboard" }];
   const anyClass = seesWholeCollege(a) || hodDepartmentIds(a).length > 0 || classTeacherClassIds(a).length > 0 || a.teachingClassIds.length > 0;
+  const marks = isAdmin(a) || hodDepartmentIds(a).length > 0 || a.teachingClassIds.length > 0 || a.grants.some((g) => g.role === "FACULTY" && g.departmentId !== null);
+  if (marks) items.push({ href: "/attendance", label: "Attendance" });
+  if (anyClass) items.push({ href: "/leaves", label: "Leave & OD" });
   if (anyClass) items.push({ href: "/classes", label: "Classes" });
   if (anyClass) items.push({ href: "/students", label: "Students" });
   if (seesWholeCollege(a) || hodDepartmentIds(a).length > 0) items.push({ href: "/courses", label: "Subjects" });
