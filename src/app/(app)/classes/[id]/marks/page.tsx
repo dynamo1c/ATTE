@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ReportActions } from "@/components/report-actions";
 import { notFound } from "next/navigation";
 import { ResultCell, lowCie } from "@/components/marks";
 import { Card, Empty, NoAccess, PageHeader, Table, Td, Th } from "@/components/ui";
@@ -21,7 +22,7 @@ export default async function ClassMarksPage(props: PageProps<"/classes/[id]/mar
 
   return (
     <>
-      <PageHeader title={`${title} · Marks`} subtitle="Per subject: internal (CIE) and total. Open a subject for every test." back={{ href: `/classes/${cls.id}`, label: title }} />
+      <PageHeader title={`${title} · Marks`} subtitle="Per subject: internal (CIE) and total. Open a subject for every test." back={{ href: `/classes/${cls.id}`, label: title }} actions={<ReportActions excel={`/exports/class-marks?class=${cls.id}`} />} />
       <Card>
         {rows.length === 0 || subjects.length === 0 ? (
           <Empty>No marks yet.</Empty>

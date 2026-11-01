@@ -14,3 +14,54 @@ body {
   background: #f8fafc;
   color: #0f172a;
 }
+
+/*
+ * Printing / "Save as PDF" (docs/PLAN.md §9): the browser renders Kannada correctly, so reports are
+ * printed from the page itself. Navigation and buttons disappear; tables are shown in full.
+ */
+.print-only {
+  display: none;
+}
+
+@page {
+  size: A4;
+  margin: 12mm;
+}
+
+@media print {
+  body {
+    background: #fff;
+    font-size: 11px;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+  .no-print,
+  aside,
+  nav,
+  details.md\:hidden {
+    display: none !important;
+  }
+  main {
+    padding: 0 !important;
+  }
+  .overflow-x-auto {
+    overflow: visible !important;
+    margin: 0 !important;
+  }
+  table {
+    min-width: 0 !important;
+  }
+  tr,
+  li {
+    break-inside: avoid;
+  }
+  thead {
+    display: table-header-group;
+  }
+  .shadow-sm {
+    box-shadow: none !important;
+  }
+  .print-only {
+    display: block !important;
+  }
+}

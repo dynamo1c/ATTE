@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ReportActions } from "@/components/report-actions";
 import { Card, Empty, NoAccess, PageHeader, Select, Stat, Table, Td, Th, buttonClass } from "@/components/ui";
 import { canViewCompliance } from "@/lib/auth/permissions";
 import { formatMark } from "@/lib/domain/marks";
@@ -41,7 +42,7 @@ export default async function LowMarksReport(props: PageProps<"/reports/marks">)
 
   return (
     <>
-      <PageHeader title="Reports" subtitle={`Internal marks (CIE) below ${low}% in a subject — from the tests entered so far, including drafts.`} />
+      <PageHeader title="Reports" subtitle={`Internal marks (CIE) below ${low}% in a subject — from the tests entered so far, including drafts.`} actions={<ReportActions />} />
       <ReportTabs active="marks" showCompliance={canViewCompliance(me.actor)} />
       <dl className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat label={`Students below ${low}% in a subject`} value={rows.length} hint={`of ${studentCount.toLocaleString("en-IN")} in ${classes.length} classes`} />
@@ -50,7 +51,7 @@ export default async function LowMarksReport(props: PageProps<"/reports/marks">)
         title="Low internal marks"
         actions={
           depts.length > 1 && (
-            <form className="flex items-end gap-2" action="">
+            <form className="no-print flex items-end gap-2" action="">
               <Select name="dept" defaultValue={deptId ?? ""} className="h-8 w-auto py-1" aria-label="Department">
                 <option value="">All departments</option>
                 {depts.map(([id, code]) => (

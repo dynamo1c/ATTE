@@ -1,10 +1,12 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Pct, StandingBadge } from "@/components/attendance";
-import { Card, Empty, Input, NoAccess, PageHeader, Stat, Table, Td, Th, buttonClass } from "@/components/ui";
+import { ExcelLink, PrintButton } from "@/components/report-actions";
+import { Card, Empty, Input, NoAccess, PageHeader, Select, Stat, Table, Td, Th, buttonClass } from "@/components/ui";
 import { canViewClass } from "@/lib/auth/permissions";
 import { formatPercent, mergeTallies, percent, tallyStanding } from "@/lib/domain/attendance";
-import { formatDateShort, isIsoDate } from "@/lib/domain/dates";
+import { formatDateShort, isIsoDate, todayIn } from "@/lib/domain/dates";
+import { monthsBetween } from "@/lib/domain/register";
 import { getClassAttendance, isCurrent } from "@/server/attendance-report";
 import { requireStaff } from "@/server/current";
 import { getClass, getCurrentTerm, parseId } from "@/server/queries";
@@ -47,6 +49,25 @@ export default async function ClassAttendancePage(props: PageProps<"/classes/[id
         title={`${title} · Attendance`}
         subtitle={`${rangeLabel} · Minimum ${data.minPct}% per subject, at risk below ${data.warnPct}%`}
         back={{ href: `/classes/${cls.id}`, label: title }}
+        actions={
+          <>
+            <ExcelLink href={`/exports/class-attendance?${new URLSearchParams({ class: String(cls.id), ...(fromRaw ? { from: fromRaw } : {}), ...(toRaw ? { to: toRaw } : {}) })}`} label="Excel + eligibility" />
+            {term && (
+              <form action="/exports/register" method="get" className="no-print flex gap-1">
+                <input type="hidden" name="class" value={cls.id} />
+                <Select name="month" aria-label="Register month" className="h-8 w-auto py-1">
+                  {monthsBetween(term.startsOn, todayIn()).map((m) => (
+                    <option key={m} value={m}>
+                      {new Date(`${m}-01T00:00:00Z`).toLocaleDateString("en-IN", { timeZone: "UTC", month: "short", year: "numeric" })}
+                    </option>
+                  ))}
+                </Select>
+                <button className={`whitespace-nowrap ${buttonClass("secondary", "sm")}`}>Register (Excel)</button>
+              </form>
+            )}
+            <PrintButton />
+          </>
+        }
       />
 
       <dl className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -63,7 +84,7 @@ export default async function ClassAttendancePage(props: PageProps<"/classes/[id
       <Card
         title={show === "risk" ? "Students below or near the minimum" : "All students"}
         actions={
-          <form className="flex flex-wrap items-end gap-2" action="">
+          <form className="no-print flex flex-wrap items-end gap-2" action="">
             {show === "risk" && <input type="hidden" name="show" value="risk" />}
             <label className="text-xs text-slate-500">
               From

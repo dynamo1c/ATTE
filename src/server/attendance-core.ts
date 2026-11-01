@@ -44,7 +44,7 @@ export interface StudentRow {
   leftOn: IsoDate | null;
   attendance: StudentAttendance;
   /** Per-class outcome for classes on or after `detailFrom` (only when asked for). */
-  outcomes?: { date: IsoDate; offeringId: number; outcome: Outcome }[];
+  outcomes?: { sessionId: number; date: IsoDate; offeringId: number; outcome: Outcome }[];
   /** Standing per subject (offeringId → standing of the combined theory + lab tally). */
   subjectStanding: Map<number, Standing>;
   /** Worst subject standing (the per-subject 60% rule). */
@@ -153,7 +153,7 @@ export async function loadClassAttendance(
     const outcomes = opts.detailFrom
       ? sessions
           .filter((s) => s.date >= opts.detailFrom!)
-          .map((s) => ({ date: s.date, offeringId: s.offeringId, outcome: evaluateSession(s, membership, marks.get(s.id), approvedLeaves, policy) }))
+          .map((s) => ({ sessionId: s.id, date: s.date, offeringId: s.offeringId, outcome: evaluateSession(s, membership, marks.get(s.id), approvedLeaves, policy) }))
           .filter((o) => o.outcome !== "NOT_APPLICABLE")
       : undefined;
     const attendance = computeStudentAttendance({

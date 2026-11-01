@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getDb } from "@/db/client";
 import { notification } from "@/db/schema";
+import { PrintButton } from "@/components/report-actions";
 import { StudentAttendanceCard } from "@/components/student-attendance-card";
 import { StudentMarksCard } from "@/components/student-marks-card";
 import { Badge, Card } from "@/components/ui";
@@ -31,11 +32,16 @@ export default async function ParentChildPage(props: PageProps<"/parent/[student
 
   return (
     <>
-      {me.children.length > 1 && (
-        <Link href="/parent" className="mb-2 inline-block text-sm text-blue-700 hover:underline">
-          ← All children
-        </Link>
-      )}
+      <div className="no-print mb-2 flex items-center justify-between gap-3">
+        {me.children.length > 1 ? (
+          <Link href="/parent" className="text-sm text-blue-700 hover:underline">
+            ← All children
+          </Link>
+        ) : (
+          <span />
+        )}
+        <PrintButton label="Print / save PDF" />
+      </div>
       <div className="mb-4">
         <h1 className="text-xl font-semibold text-slate-900">{child.name}</h1>
         <p className="text-sm text-slate-500">
@@ -61,7 +67,7 @@ export default async function ParentChildPage(props: PageProps<"/parent/[student
         </Card>
       )}
 
-      <div className="grid gap-6 md:grid-cols-2">
+      <div className="no-print grid gap-6 md:grid-cols-2">
         <Card title="Recent messages to you">
           {messages.length === 0 ? (
             <p className="text-sm text-slate-500">None yet.</p>

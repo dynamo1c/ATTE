@@ -5,7 +5,7 @@ import { parentContact } from "@/db/schema";
 import { ActionForm, Field, SubmitButton } from "@/components/action-form";
 import { StudentAttendanceCard } from "@/components/student-attendance-card";
 import { StudentMarksCard } from "@/components/student-marks-card";
-import { Badge, Card, Empty, Input, NoAccess, PageHeader, Select } from "@/components/ui";
+import { Badge, Card, Empty, Input, LinkButton, NoAccess, PageHeader, Select } from "@/components/ui";
 import { formatDateShort, todayIn } from "@/lib/domain/dates";
 import { formatIndianMobile } from "@/lib/domain/phone";
 import { requireStaff } from "@/server/current";
@@ -45,6 +45,13 @@ export default async function StudentPage(props: PageProps<"/students/[id]">) {
           </span>
         }
         back={m ? { href: `/classes/${m.classGroupId}`, label: `${m.classDept} Sem ${m.semester}` } : { href: "/students", label: "Students" }}
+        actions={
+          m && (
+            <LinkButton href={`/students/${s.id}/report-card`} variant="secondary" size="sm">
+              Report card
+            </LinkButton>
+          )
+        }
       />
       <div className="mb-4 flex flex-wrap gap-1">
         {s.lateralEntry && <Badge tone="blue">Lateral entry</Badge>}

@@ -275,7 +275,7 @@ Details: <portal link>
 - Faculty compliance report (unmarked sessions).
 - Message delivery report.
 
-PDFs are rendered from HTML with headless Chromium so Kannada text shapes correctly (most PDF libraries break Kannada conjuncts). Bundled font: Noto Sans Kannada.
+PDFs come from the browser's print / "Save as PDF" on each report page, so Kannada text shapes correctly (most PDF libraries break Kannada conjuncts). Headless Chromium on the server only if reports must be generated without a person (e.g. emailed).
 
 ---
 
@@ -356,6 +356,13 @@ Alternative considered: **Django + HTMX** (Python). Equally solid, comes with a 
 Demo-ready after phases 0–4 + 6 (mock + test number).
 
 **Progress:** Phase 0 and 1 done (2026-10-31). Schema with DB-level checks, pure rule logic (attendance %, calendar, timetable, reg no, phone) with 62 unit tests, 14 database-constraint tests, deterministic dummy data seed, CI workflow, status page.
+
+**Progress:** Phase 8 done (2026-11-01).
+
+- Excel (`/exports/<kind>`, same filters and permission as the screen, every download audited as EXPORT): attendance shortage list (college / department / semester), class attendance with exam eligibility by attendance + a by-subject sheet, monthly register in the book layout (one column per class: P, L, A, P*, E, A*, ?), class marks (summary + one sheet per subject with every test and its status), classes not entered, parent message delivery (up to 20,000 rows).
+- Written by our own small .xlsx writer (`src/lib/xlsx.ts`, no dependency): title block, bold header with filter, frozen name columns, landscape fit-to-width printing with the header repeated. Text is never a formula. Files checked by opening them in Microsoft Excel.
+- **PDF: decided against headless Chromium.** Every report screen has "Print / PDF"; a print stylesheet hides navigation and buttons and prints tables in full. The browser shapes Kannada correctly, and there is no 170 MB browser to install on the server. New printable student report card (attendance + published marks, signature lines); parents can print their child's page too. Server-side PDF (e.g. to email reports) can be added later if needed.
+- Exam eligibility here is attendance only; the marks / condonation rules come with pass/fail later.
 
 **Progress:** Phase 7 done (2026-11-01).
 

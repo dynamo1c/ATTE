@@ -37,7 +37,7 @@ export function PageHeader({ title, subtitle, actions, back }: { title: ReactNod
   return (
     <div className="mb-6">
       {back && (
-        <Link href={back.href} className="text-sm text-blue-700 hover:underline">
+        <Link href={back.href} className="no-print text-sm text-blue-700 hover:underline">
           ← {back.label}
         </Link>
       )}

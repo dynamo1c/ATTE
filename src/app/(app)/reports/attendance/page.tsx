@@ -1,12 +1,13 @@
 import Link from "next/link";
+import { ReportActions } from "@/components/report-actions";
 import { Pct, StandingBadge } from "@/components/attendance";
 import { Card, Empty, NoAccess, PageHeader, Select, Stat, Table, Td, Th, buttonClass } from "@/components/ui";
 import { canViewCompliance } from "@/lib/auth/permissions";
-import { classesToReach, percent, tallyStanding } from "@/lib/domain/attendance";
+import { tallyStanding } from "@/lib/domain/attendance";
 import { formatDateShort } from "@/lib/domain/dates";
-import { getClassAttendance, isCurrent } from "@/server/attendance-report";
 import { requireStaff } from "@/server/current";
-import { getCurrentTerm, listVisibleClasses, mapLimit } from "@/server/queries";
+import { getCurrentTerm, listVisibleClasses } from "@/server/queries";
+import { loadShortage, shortageFilters } from "@/server/report-data";
 import { ReportTabs } from "../tabs";
 
 export const metadata = { title: "Attendance shortage · MEI Attendance" };
@@ -19,41 +20,16 @@ export default async function ShortageReport(props: PageProps<"/reports/attendan
   if (visible.length === 0) return <NoAccess what="attendance reports" />;
 
   const sp = await props.searchParams;
-  const depts = [...new Map(visible.map((c) => [c.departmentId, c.departmentCode])).entries()];
-  const deptId = typeof sp.dept === "string" && depts.some(([id]) => String(id) === sp.dept) ? Number(sp.dept) : null;
-  const sems = [...new Set(visible.map((c) => c.semester))].sort();
-  const sem = typeof sp.sem === "string" && sems.some((s) => String(s) === sp.sem) ? Number(sp.sem) : null;
-  const level = sp.level === "risk" ? "risk" : "shortage";
-  const classes = visible.filter((c) => (deptId === null || c.departmentId === deptId) && (sem === null || c.semester === sem));
-
-  // Four classes at a time: a whole-college report must not starve the pool for teachers marking attendance.
-  const results = await mapLimit(classes, 4, (c) => getClassAttendance(c.id));
-  const minPct = results[0]?.minPct ?? 60;
-  const warnPct = results[0]?.warnPct ?? 70;
-
-  const rows = results.flatMap((data, i) => {
-    const cls = classes[i];
-    const subjects = new Map(data.subjects.map((s) => [s.offeringId, s]));
-    return data.students
-      .filter((s) => isCurrent(s) && (s.standing === "SHORTAGE" || (level === "risk" && s.standing === "AT_RISK")))
-      .map((s) => {
-        const weak = s.attendance.byOffering
-          .filter((o) => s.subjectStanding.get(o.offeringId) === "SHORTAGE" || (level === "risk" && s.subjectStanding.get(o.offeringId) === "AT_RISK"))
-          .map((o) => ({ o, subject: subjects.get(o.offeringId)!, standing: s.subjectStanding.get(o.offeringId)! }))
-          .sort((a, b) => (percent(a.o.total) ?? 0) - (percent(b.o.total) ?? 0));
-        const worstPct = Math.min(...weak.map((w) => percent(w.o.total) ?? 100));
-        const need = Math.max(0, ...weak.filter((w) => w.standing === "SHORTAGE").map((w) => classesToReach(w.o.total, minPct) ?? 0));
-        return { cls, s, weak, worstPct, need };
-      });
-  });
-  rows.sort((a, b) => a.cls.departmentCode.localeCompare(b.cls.departmentCode) || a.cls.semester - b.cls.semester || a.worstPct - b.worstPct);
-  const shortCount = rows.filter((r) => r.s.standing === "SHORTAGE").length;
-  const studentsCovered = results.reduce((n, d) => n + d.students.filter(isCurrent).length, 0);
-  const unmarked = results.reduce((n, d) => n + d.unmarkedSessions, 0);
+  const { depts, sems, deptId, sem, level } = shortageFilters(visible, sp);
+  const { classes, rows, minPct, warnPct, to, shortCount, studentsCovered, unmarked } = await loadShortage(visible, { deptId, sem, level });
 
   return (
     <>
-      <PageHeader title="Reports" subtitle={`Up to ${formatDateShort(results[0]?.to ?? term.startsOn)} · rule: at least ${minPct}% in every subject`} />
+      <PageHeader
+        title="Reports"
+        subtitle={`Up to ${formatDateShort(to ?? term.startsOn)} · rule: at least ${minPct}% in every subject`}
+        actions={<ReportActions excel={`/exports/shortage?${new URLSearchParams({ ...(deptId ? { dept: String(deptId) } : {}), ...(sem ? { sem: String(sem) } : {}), level })}`} />}
+      />
       <ReportTabs active="attendance" showCompliance={canViewCompliance(me.actor)} />
 
       <dl className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -65,7 +41,7 @@ export default async function ShortageReport(props: PageProps<"/reports/attendan
       <Card
         title={level === "risk" ? `Below ${warnPct}% in a subject` : `Below ${minPct}% in a subject`}
         actions={
-          <form className="flex flex-wrap items-end gap-2" action="">
+          <form className="no-print flex flex-wrap items-end gap-2" action="">
             {depts.length > 1 && (
               <Select name="dept" defaultValue={deptId ?? ""} className="h-8 w-auto py-1" aria-label="Department">
                 <option value="">All departments</option>

@@ -3,17 +3,19 @@ import Link from "next/link";
 import { getDb } from "@/db/client";
 import { ActionForm, Field, SubmitButton } from "@/components/action-form";
 import { MessagePreview, MessageStatus } from "@/components/messages";
+import { ExcelLink } from "@/components/report-actions";
 import { Card, Empty, Input, NoAccess, PageHeader, Select, Stat, Table, Td, Textarea, Th, buttonClass } from "@/components/ui";
 import { canBroadcast, canManageOutbox, canViewMessages, classTeacherClassIds, seesWholeCollege, visibleDepartmentIds } from "@/lib/auth/permissions";
 import { formatIndianMobile } from "@/lib/domain/phone";
 import { TRIGGER_LABEL, type Trigger } from "@/lib/notify/rules";
 import { requireStaff } from "@/server/current";
 import { getCurrentTerm, listClasses, listDepartments } from "@/server/queries";
+import { MESSAGE_STATUSES, messageFilters, messageScope, messageWhere } from "@/server/report-data";
 import { cancelMessage, retryMessage, runNow, sendBroadcast } from "./actions";
 
 export const metadata = { title: "Messages · MEI Attendance" };
 
-const STATUSES = ["QUEUED", "SENDING", "SENT", "DELIVERED", "READ", "FAILED", "SKIPPED"] as const;
+const STATUSES = MESSAGE_STATUSES;
 const PAGE = 100;
 
 type Row = {
@@ -40,24 +42,12 @@ export default async function MessagesPage(props: PageProps<"/messages">) {
   const term = await getCurrentTerm();
   if (!term) return <NoAccess what="messages (no term set up)" />;
   const sp = await props.searchParams;
-  const status = typeof sp.status === "string" && (STATUSES as readonly string[]).includes(sp.status) ? sp.status : null;
-  const trigger = typeof sp.trigger === "string" && sp.trigger in TRIGGER_LABEL ? (sp.trigger as Trigger) : null;
-  const q = typeof sp.q === "string" ? sp.q.trim().toUpperCase().slice(0, 20) : "";
-
-  // Scope: students of the classes this person may see (whole college / HOD's departments / own class).
+  const f = messageFilters(sp);
+  const { status, trigger, q } = f;
   const depts = visibleDepartmentIds(me.actor);
   const ownClasses = classTeacherClassIds(me.actor);
-  const scope =
-    depts === null
-      ? sql`true`
-      : sql`EXISTS (SELECT 1 FROM class_membership m JOIN class_group cg ON cg.id = m.class_group_id
-                    WHERE m.student_id = n.student_id AND m.term_id = ${term.id}
-                      AND (${depts.length ? sql`cg.department_id IN (${sql.join(depts.map((d) => sql`${d}`), sql`, `)})` : sql`false`}
-                           OR ${ownClasses.length ? sql`cg.id IN (${sql.join(ownClasses.map((c) => sql`${c}`), sql`, `)})` : sql`false`}))`;
-  const filters = sql`${scope}
-    ${status ? sql`AND n.status = ${status}` : sql``}
-    ${trigger ? sql`AND n.trigger = ${trigger}` : sql``}
-    ${q ? sql`AND (s.reg_no = ${q} OR s.name ILIKE ${`%${q}%`} OR n.phone LIKE ${`%${q.replace(/\D/g, "") || "x"}`})` : sql``}`;
+  const scope = messageScope(me.actor, term.id);
+  const filters = messageWhere(me.actor, term.id, f);
 
   const db = getDb();
   const [{ rows }, { rows: [stats] }] = await Promise.all([
@@ -101,11 +91,14 @@ export default async function MessagesPage(props: PageProps<"/messages">) {
         title="Messages to parents"
         subtitle={`${seesWholeCollege(me.actor) ? "Whole college" : "Your students"} · WhatsApp first, SMS if no WhatsApp · English + Kannada · nothing sent 9 pm – 8 am`}
         actions={
-          manage && (
-            <ActionForm action={runNow}>
-              <SubmitButton variant="secondary">Check &amp; send now</SubmitButton>
-            </ActionForm>
-          )
+          <>
+            <ExcelLink href={`/exports/messages${link({}).slice("/messages".length)}`} />
+            {manage && (
+              <ActionForm action={runNow}>
+                <SubmitButton variant="secondary">Check &amp; send now</SubmitButton>
+              </ActionForm>
+            )}
+          </>
         }
       />
 
@@ -158,7 +151,7 @@ export default async function MessagesPage(props: PageProps<"/messages">) {
       <Card
         title="Messages"
         actions={
-          <form className="flex flex-wrap items-end gap-2" action="">
+          <form className="no-print flex flex-wrap items-end gap-2" action="">
             <Input name="q" defaultValue={q} placeholder="Reg. no, name or phone" className="h-8 w-44 py-1" aria-label="Search" />
             <Select name="status" defaultValue={status ?? ""} className="h-8 w-auto py-1" aria-label="Status">
               <option value="">Any status</option>
