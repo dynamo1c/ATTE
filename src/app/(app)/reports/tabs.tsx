@@ -1,7 +1,7 @@
 import Link from "next/link";
 
-export function ReportTabs({ active, showCompliance }: { active: "attendance" | "compliance"; showCompliance: boolean }) {
-  const tabs = [{ key: "attendance", href: "/reports/attendance", label: "Attendance shortage" }, ...(showCompliance ? [{ key: "compliance", href: "/reports/compliance", label: "Not yet entered" }] : [])];
+export function ReportTabs({ active, showCompliance }: { active: "attendance" | "marks" | "compliance"; showCompliance: boolean }) {
+  const tabs = [{ key: "attendance", href: "/reports/attendance", label: "Attendance shortage" }, { key: "marks", href: "/reports/marks", label: "Low marks" }, ...(showCompliance ? [{ key: "compliance", href: "/reports/compliance", label: "Not yet entered" }] : [])];
   return (
     <div className="mb-4 flex flex-wrap gap-2">
       {tabs.map((t) => (

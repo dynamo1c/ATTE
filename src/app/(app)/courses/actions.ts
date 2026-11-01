@@ -4,7 +4,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getDb } from "@/db/client";
-import { assessmentScheme, course, teachingAssignment, timetableSlot, courseOffering } from "@/db/schema";
+import { assessment, assessmentScheme, course, teachingAssignment, timetableSlot, courseOffering } from "@/db/schema";
 import { canManageDepartment } from "@/lib/auth/permissions";
 import { allowedComponents } from "@/lib/domain/timetable";
 import { checkbox, int, oneOf, text } from "@/lib/forms";
@@ -50,6 +50,15 @@ export const updateCourse = formAction(z.object({ id: int("Subject"), ...fields,
   const offered = await db.select({ n: sql<number>`count(*)::int` }).from(courseOffering).where(eq(courseOffering.courseId, id));
   if (offered[0].n > 0 && (before.departmentId !== input.departmentId || before.semester !== input.semester)) {
     throw new UserError("This subject is already given to a class, so its department and semester can't change. Create a new subject instead.");
+  }
+  // Marks are stored against the scheme's tests: switching schemes would orphan them.
+  if (before.schemeId !== input.schemeId) {
+    const [tests] = await db
+      .select({ n: sql<number>`count(*)::int` })
+      .from(assessment)
+      .innerJoin(courseOffering, eq(courseOffering.id, assessment.offeringId))
+      .where(eq(courseOffering.courseId, id));
+    if (tests.n > 0) throw new UserError("Marks have already been started for this subject, so its marks scheme can't change.", { schemeId: ["In use"] });
   }
   // Changing the type must not orphan timetable periods or teachers for a part that would no longer exist.
   const allowed = allowedComponents(input.kind);

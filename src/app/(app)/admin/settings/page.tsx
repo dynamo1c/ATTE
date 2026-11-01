@@ -18,6 +18,8 @@ const TRIGGER_HINT = {
   CONSECUTIVE_ABSENCE: "After the number of days set under rules. Also sent to parents who opted out.",
   DAY_ABSENCE: "Evening, when a student missed every class that day. Can be a lot of messages.",
   LEAVE_RECORDED: "When a leave or on-duty notice is approved.",
+  MARKS_PUBLISHED: "When the HOD publishes a test: the mark and internal marks so far.",
+  LOW_MARKS: "Instead of the normal marks message when the mark is below the low-marks level.",
 } as const;
 const COUNTS_LABEL = { PRESENT: "Counts as present", EXCUSED: "Excused (not counted at all)", ABSENT: "Still absent (noted as leave)" } as const;
 

@@ -52,10 +52,38 @@ export type MessageData =
   | { kind: "CONSECUTIVE_ABSENCE"; student: StudentRef; days: number; from: IsoDate; to: IsoDate }
   | { kind: "DAY_ABSENCE"; student: StudentRef; date: IsoDate }
   | { kind: "LEAVE_RECORDED"; student: StudentRef; leaveType: "MEDICAL" | "ON_DUTY" | "PERSONAL" | "OTHER"; from: IsoDate; to: IsoDate }
-  | { kind: "BROADCAST"; textEn: string; textKn: string };
+  | { kind: "BROADCAST"; textEn: string; textKn: string }
+  | {
+      kind: "MARKS_PUBLISHED" | "LOW_MARKS";
+      student: StudentRef;
+      subject: string;
+      /** Scheme part code (CIE_T1, CIE_P2, ACT, SEE) — the Kannada label is derived from it. */
+      partCode: string;
+      partLabel: string;
+      /** "38.5", or the flag "AB" / "MP". */
+      mark: string;
+      maxMarks: string;
+      /** Internal marks so far from published parts, e.g. "38.4", and what it is out of. */
+      cieSoFar: string | null;
+      cieOutOf: number;
+      link: string | null;
+    };
 
 const LEAVE_EN = { MEDICAL: "Medical leave", ON_DUTY: "On-duty (OD)", PERSONAL: "Personal leave", OTHER: "Leave" } as const;
 const LEAVE_KN = { MEDICAL: "ವೈದ್ಯಕೀಯ ರಜೆ", ON_DUTY: "ಆನ್-ಡ್ಯೂಟಿ (OD)", PERSONAL: "ವೈಯಕ್ತಿಕ ರಜೆ", OTHER: "ರಜೆ" } as const;
+
+/** Kannada name of a marks part, from its code. */
+export function partLabelKn(code: string, labelEn: string): string {
+  const n = code.match(/(\d)$/)?.[1] ?? "";
+  if (code.startsWith("CIE_T")) return `ಸಿದ್ಧಾಂತ ಪರೀಕ್ಷೆ ${n}`;
+  if (code.startsWith("CIE_P")) return `ಪ್ರಾಯೋಗಿಕ ಪರೀಕ್ಷೆ ${n}`;
+  if (code === "ACT") return "ಚಟುವಟಿಕೆ";
+  if (code === "SEE") return /practical/i.test(labelEn) ? "ಅಂತಿಮ ಪ್ರಾಯೋಗಿಕ ಪರೀಕ್ಷೆ" : "ಅಂತಿಮ ಸಿದ್ಧಾಂತ ಪರೀಕ್ಷೆ";
+  return labelEn;
+}
+
+const markEn = (m: string) => (m === "AB" ? "Absent" : m === "MP" ? "Malpractice (0)" : m);
+const markKn = (m: string) => (m === "AB" ? "ಗೈರು" : m === "MP" ? "ಪರೀಕ್ಷಾ ಅಕ್ರಮ (0)" : m);
 
 const who = (s: StudentRef) => `${s.name} (${s.regNo}), ${s.className}`;
 const range = (from: IsoDate, to: IsoDate, f: (d: IsoDate) => string) => (from === to ? f(from) : `${f(from)} – ${f(to)}`);
@@ -100,6 +128,22 @@ function english(d: MessageData): string {
       return lines(`${COLLEGE_EN}`, `${LEAVE_EN[d.leaveType]} recorded for ${who(d.student)}: ${range(d.from, d.to, formatDateShort)}.`);
     case "BROADCAST":
       return lines(`${COLLEGE_EN} – Notice`, d.textEn);
+    case "MARKS_PUBLISHED":
+      return lines(
+        `${COLLEGE_EN} – Marks`,
+        `Student: ${who(d.student)}`,
+        `${d.subject}, ${d.partLabel}: ${markEn(d.mark)}${d.mark === "AB" || d.mark === "MP" ? "" : ` out of ${d.maxMarks}`}`,
+        d.cieSoFar ? `Internal marks so far: ${d.cieSoFar} out of ${d.cieOutOf}` : null,
+        d.link ? `Details: ${d.link}` : null,
+      );
+    case "LOW_MARKS":
+      return lines(
+        `${COLLEGE_EN} – Low marks`,
+        `${who(d.student)} got ${d.mark === "AB" || d.mark === "MP" ? markEn(d.mark) : `${d.mark} out of ${d.maxMarks}`} in ${d.subject}, ${d.partLabel}.`,
+        d.cieSoFar ? `Internal marks so far: ${d.cieSoFar} out of ${d.cieOutOf}` : null,
+        "Please make sure they prepare well for the next test. You may contact the subject teacher.",
+        d.link ? `Details: ${d.link}` : null,
+      );
   }
 }
 
@@ -143,6 +187,22 @@ function kannada(d: MessageData): string {
       return lines(`${COLLEGE_KN}`, `${who(d.student)} ಅವರಿಗೆ ${range(d.from, d.to, formatDateKn)} ${LEAVE_KN[d.leaveType]} ದಾಖಲಿಸಲಾಗಿದೆ.`);
     case "BROADCAST":
       return lines(`${COLLEGE_KN} – ಸೂಚನೆ`, d.textKn);
+    case "MARKS_PUBLISHED":
+      return lines(
+        `${COLLEGE_KN} – ಅಂಕಗಳು`,
+        `ವಿದ್ಯಾರ್ಥಿ: ${who(d.student)}`,
+        `${d.subject}, ${partLabelKn(d.partCode, d.partLabel)}: ${d.mark === "AB" || d.mark === "MP" ? markKn(d.mark) : `${d.maxMarks} ರಲ್ಲಿ ${d.mark}`}`,
+        d.cieSoFar ? `ಇಲ್ಲಿಯವರೆಗಿನ ಆಂತರಿಕ ಅಂಕಗಳು: ${d.cieOutOf} ರಲ್ಲಿ ${d.cieSoFar}` : null,
+        d.link ? `ವಿವರಗಳು: ${d.link}` : null,
+      );
+    case "LOW_MARKS":
+      return lines(
+        `${COLLEGE_KN} – ಕಡಿಮೆ ಅಂಕಗಳು`,
+        `${who(d.student)} ಅವರು ${d.subject}, ${partLabelKn(d.partCode, d.partLabel)} ನಲ್ಲಿ ${d.mark === "AB" || d.mark === "MP" ? markKn(d.mark) : `${d.maxMarks} ರಲ್ಲಿ ${d.mark} ಅಂಕ ಪಡೆದಿದ್ದಾರೆ`}.`,
+        d.cieSoFar ? `ಇಲ್ಲಿಯವರೆಗಿನ ಆಂತರಿಕ ಅಂಕಗಳು: ${d.cieOutOf} ರಲ್ಲಿ ${d.cieSoFar}` : null,
+        "ಮುಂದಿನ ಪರೀಕ್ಷೆಗೆ ಚೆನ್ನಾಗಿ ತಯಾರಾಗುವಂತೆ ದಯವಿಟ್ಟು ನೋಡಿಕೊಳ್ಳಿ. ವಿಷಯ ಶಿಕ್ಷಕರನ್ನು ಸಂಪರ್ಕಿಸಬಹುದು.",
+        d.link ? `ವಿವರಗಳು: ${d.link}` : null,
+      );
   }
 }
 
@@ -152,9 +212,10 @@ function lines(...ls: (string | null)[]) {
 
 /** Full WhatsApp text in the contact's language (both = English, blank line, Kannada). */
 export function renderWhatsApp(d: MessageData, lang: Language): string {
-  if (lang === "EN") return english(d);
-  if (lang === "KN") return kannada(d);
-  return `${english(d)}\n\n${kannada(d)}`;
+  const en = lang === "KN" ? "" : english(d);
+  const kn = lang === "EN" ? "" : kannada(d);
+  if ((lang !== "KN" && !en) || (lang !== "EN" && !kn)) throw new Error(`No message text for kind "${(d as { kind?: unknown }).kind}"`);
+  return lang === "BOTH" ? `${en}\n\n${kn}` : en || kn;
 }
 
 /**
@@ -162,6 +223,12 @@ export function renderWhatsApp(d: MessageData, lang: Language): string {
  * Kannada only when the parent asked for Kannada only.
  */
 export function renderSms(d: MessageData, lang: Language): string {
+  const text = sms(d, lang);
+  if (!text) throw new Error(`No SMS text for kind "${(d as { kind?: unknown }).kind}"`);
+  return text;
+}
+
+function sms(d: MessageData, lang: Language): string | undefined {
   const kn = lang === "KN";
   const s = "student" in d ? d.student : null;
   const name = s ? `${s.name} ${s.regNo}` : "";
@@ -184,6 +251,11 @@ export function renderSms(d: MessageData, lang: Language): string {
       return kn ? `MEI: ${name} ${LEAVE_KN[d.leaveType]} ದಾಖಲು.` : `MEI Poly: ${LEAVE_EN[d.leaveType]} recorded for ${name}, ${range(d.from, d.to, formatDateShort)}.`;
     case "BROADCAST":
       return kn ? `MEI: ${d.textKn}` : `MEI Poly: ${d.textEn}`;
+    case "MARKS_PUBLISHED":
+    case "LOW_MARKS": {
+      const m = d.mark === "AB" || d.mark === "MP" ? (kn ? markKn(d.mark) : markEn(d.mark)) : `${d.mark}/${d.maxMarks}`;
+      return kn ? `MEI: ${name} ${d.subject} ${partLabelKn(d.partCode, d.partLabel)}: ${m}` : `MEI Poly: ${name} ${d.subject} ${d.partLabel}: ${m}.${d.cieSoFar ? ` Internal so far ${d.cieSoFar}/${d.cieOutOf}.` : ""}`;
+    }
   }
 }
 

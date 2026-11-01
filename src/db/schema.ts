@@ -599,6 +599,11 @@ export const assessment = pgTable(
     status: assessmentStatus("status").notNull().default("DRAFT"),
     publishedBy: integer("published_by").references(() => staff.id),
     publishedAt: timestamp("published_at", { withTimezone: true }),
+    /** Why it was sent back / reopened (shown to the teacher). */
+    statusNote: text("status_note"),
+    /** Optimistic lock: every save must send the version it read. */
+    version: integer("version").notNull().default(0),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
     unique("assessment_offering_component").on(t.offeringId, t.schemeComponentId),
@@ -607,6 +612,14 @@ export const assessment = pgTable(
     check("assessment_published", sql`${t.status} <> 'PUBLISHED' OR (${t.publishedBy} IS NOT NULL AND ${t.publishedAt} IS NOT NULL)`),
   ],
 );
+
+/** Idempotency for mark saves: a client retry with the same op id is a no-op. */
+export const markSubmission = pgTable("mark_submission", {
+  clientOpId: uuid("client_op_id").primaryKey(),
+  assessmentId: integer("assessment_id").notNull().references(() => assessment.id),
+  staffId: integer("staff_id").notNull().references(() => staff.id),
+  submittedAt: timestamp("submitted_at", { withTimezone: true }).notNull().defaultNow(),
+});
 
 export const mark = pgTable(
   "mark",

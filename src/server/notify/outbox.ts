@@ -91,6 +91,9 @@ export function prepare(draft: Draft, contacts: readonly Contact[], now: Date, c
 
 /** Insert rows; a row whose dedupe key already exists is silently skipped. Returns how many were new. */
 export async function enqueue(tx: Tx, rows: readonly Prepared[]): Promise<number> {
+  // Never queue a message without text: fail the whole transaction instead (the cause is a bug, not data).
+  const blank = rows.find((r) => typeof r.payload.text !== "string" || r.payload.text.trim() === "");
+  if (blank) throw new Error(`Refusing to queue an empty "${blank.template}" message.`);
   let added = 0;
   for (let i = 0; i < rows.length; i += 500) {
     const chunk = rows.slice(i, i + 500);

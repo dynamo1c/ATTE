@@ -87,8 +87,12 @@ export function Table({ children }: { children: ReactNode }) {
   );
 }
 
-export function Th({ children, className }: { children?: ReactNode; className?: string }) {
-  return <th className={cx("border-b border-slate-200 px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-500", className)}>{children}</th>;
+export function Th({ children, className, ...props }: ComponentProps<"th">) {
+  return (
+    <th className={cx("border-b border-slate-200 px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-500", className)} {...props}>
+      {children}
+    </th>
+  );
 }
 
 export function Td({ children, className, ...props }: ComponentProps<"td">) {

@@ -3,12 +3,14 @@ import {
   canBroadcast,
   canEditCalendar,
   canEditLockedAttendance,
+  canEnterMarks,
   canMarkSession,
   canManageClass,
   canManageClassStudents,
   canManageDepartment,
   canManageOutbox,
   canManageSettings,
+  canPublishMarks,
   canViewClass,
   canViewCompliance,
   canViewMessages,
@@ -98,6 +100,19 @@ describe("permissions", () => {
     expect([admin, principal, hodCs, classTeacher, faculty].map(canViewMessages)).toEqual([true, true, true, true, false]);
     expect([admin, principal, hodCs, classTeacher, faculty].map(canBroadcast)).toEqual([true, true, false, false, false]);
     expect([admin, principal, hodCs].map(canManageOutbox)).toEqual([true, false, false]);
+  });
+
+  it("marks: part teacher enters CIE, only HOD/admin enter finals and publish", () => {
+    const teacher = { ...faculty, staffId: 42 };
+    const otherTeacher = { ...faculty, staffId: 43 };
+    const part = (isFinal: boolean) => ({ classRef: csSem3, isFinal, assignedStaffIds: [42] });
+    expect(canEnterMarks(teacher, part(false))).toBe(true);
+    expect(canEnterMarks(teacher, part(true))).toBe(false);
+    expect(canEnterMarks(otherTeacher, part(false))).toBe(false);
+    expect(canEnterMarks(hodCs, part(true))).toBe(true);
+    expect(canEnterMarks(hodCs, { ...part(true), classRef: meSem3 })).toBe(false);
+    expect(canEnterMarks({ ...principal, staffId: 7 }, part(false))).toBe(false);
+    expect([admin, principal, hodCs, faculty].map((a) => canPublishMarks(a, csSem3))).toEqual([true, false, true, false]);
   });
 
   it("only HOD, principal and admin see who has not entered attendance", () => {

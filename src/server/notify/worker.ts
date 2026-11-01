@@ -66,6 +66,11 @@ export async function processOutbox(db: DbOrTx, providers: Providers, opts: { no
       summary.skipped++;
       continue;
     }
+    if (typeof m.payload?.text !== "string" || m.payload.text.trim() === "") {
+      await db.update(notification).set({ status: "FAILED", lastError: "Message has no text (not sent)", updatedAt: new Date() }).where(eq(notification.id, m.id));
+      summary.failed++;
+      continue;
+    }
     const provider = m.channel === "WHATSAPP" ? providers.whatsapp : providers.sms;
     let res: Awaited<ReturnType<typeof provider.send>>;
     try {

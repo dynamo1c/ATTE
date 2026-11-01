@@ -69,6 +69,8 @@ describe("templates", () => {
       { kind: "DAY_ABSENCE", student, date: "2026-10-29" },
       { kind: "LEAVE_RECORDED", student, leaveType: "ON_DUTY", from: "2026-10-29", to: "2026-10-29" },
       { kind: "BROADCAST", textEn: "College closed tomorrow.", textKn: "ನಾಳೆ ಕಾಲೇಜಿಗೆ ರಜೆ." },
+      { kind: "MARKS_PUBLISHED", student, subject: "DSP", partCode: "CIE_T2", partLabel: "Theory test 2", mark: "38.5", maxMarks: "50", cieSoFar: "40.2", cieOutOf: 50, link: null },
+      { kind: "LOW_MARKS", student, subject: "DSP", partCode: "CIE_P1", partLabel: "Practical test 1", mark: "AB", maxMarks: "50", cieSoFar: null, cieOutOf: 50, link: "https://x.test" },
     ];
     for (const d of all)
       for (const lang of ["EN", "KN", "BOTH"] as const) {
@@ -77,6 +79,25 @@ describe("templates", () => {
           expect(t).not.toMatch(/undefined|null|NaN|\$\{/);
         }
       }
+  });
+
+  it("marks messages: value out of max, Kannada part names, AB spelled out", () => {
+    const base = { student, subject: "DSP", partCode: "CIE_T2", partLabel: "Theory test 2", mark: "38.5", maxMarks: "50", cieSoFar: "40.2", cieOutOf: 50, link: null } as const;
+    const t = renderWhatsApp({ kind: "MARKS_PUBLISHED", ...base }, "BOTH");
+    expect(t).toContain("DSP, Theory test 2: 38.5 out of 50");
+    expect(t).toContain("Internal marks so far: 40.2 out of 50");
+    expect(t).toContain("ಸಿದ್ಧಾಂತ ಪರೀಕ್ಷೆ 2: 50 ರಲ್ಲಿ 38.5");
+    const ab = renderWhatsApp({ kind: "LOW_MARKS", ...base, mark: "AB", partCode: "SEE", partLabel: "Final exam (practical)" }, "BOTH");
+    expect(ab).toContain("got Absent in DSP, Final exam (practical)");
+    expect(ab).toContain("ಅಂತಿಮ ಪ್ರಾಯೋಗಿಕ ಪರೀಕ್ಷೆ ನಲ್ಲಿ ಗೈರು");
+    expect(ab).not.toContain("out of 50 in");
+  });
+
+  it("an unknown kind throws instead of producing an empty message", () => {
+    const bad = { kind: "NOPE" } as unknown as MessageData;
+    expect(() => renderWhatsApp(bad, "BOTH")).toThrow();
+    expect(() => renderWhatsApp(bad, "EN")).toThrow();
+    expect(() => renderSms(bad, "KN")).toThrow();
   });
 
   it("SMS stays short", () => {

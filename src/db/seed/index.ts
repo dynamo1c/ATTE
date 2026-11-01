@@ -10,7 +10,7 @@
  * - Faculty assigned so nobody is double-booked; HODs, class teachers, principal, admin
  * - Parents (1–2 numbers each), consent mostly recorded
  * - Attendance from term start until SEED_UNTIL, with the last two days partly unmarked ("pending")
- * - Leave/OD notices, CIE-1 marks published
+ * - Leave/OD notices; marks mid-term (tests 1 and 2), CS Sem 1 complete with final exam marks
  * - Edge cases: detained student, lateral entries, mid-term joiner, batch change, dropout
  */
 import "dotenv/config";
@@ -129,42 +129,60 @@ async function seed(tx: Tx, until: IsoDate) {
   const deptRows = await tx.insert(t.department).values(DEPARTMENTS.map((d) => ({ code: d.code, name: d.name }))).returning();
   const deptId = new Map(deptRows.map((d) => [d.code as DeptCode, d.id]));
 
-  // --- Assessment schemes ([OPEN] max marks are placeholders) --------------
+  // --- Marks schemes (confirmed rules, docs/PLAN.md §7) ----------------------
+  const cie = (codes: [string, string, "THEORY" | "PRACTICAL"][]) => codes.map(([code, label, component]) => ({ code, label, component, isFinal: false, maxMarks: 50 }));
+  const MAIN_CIE = cie([
+    ["CIE_T1", "Theory test 1", "THEORY"],
+    ["CIE_T2", "Theory test 2", "THEORY"],
+    ["CIE_P1", "Practical test 1", "PRACTICAL"],
+    ["CIE_P2", "Practical test 2", "PRACTICAL"],
+    ["ACT", "Activity", "THEORY"],
+  ]);
   const schemeDefs = {
-    INTEGRATED: [
-      { code: "CIE_T1", label: "CIE Theory 1", component: "THEORY", isFinal: false, maxMarks: 50 },
-      { code: "CIE_T2", label: "CIE Theory 2", component: "THEORY", isFinal: false, maxMarks: 50 },
-      { code: "CIE_P1", label: "CIE Practical 1", component: "PRACTICAL", isFinal: false, maxMarks: 50 },
-      { code: "CIE_P2", label: "CIE Practical 2", component: "PRACTICAL", isFinal: false, maxMarks: 50 },
-      { code: "SEE_T", label: "Final Theory", component: "THEORY", isFinal: true, maxMarks: 100 },
-      { code: "SEE_P", label: "Final Practical", component: "PRACTICAL", isFinal: true, maxMarks: 100 },
-    ],
-    THEORY_ONLY: [
-      { code: "CIE_T1", label: "CIE Theory 1", component: "THEORY", isFinal: false, maxMarks: 50 },
-      { code: "CIE_T2", label: "CIE Theory 2", component: "THEORY", isFinal: false, maxMarks: 50 },
-      { code: "CIE_T3", label: "CIE Theory 3", component: "THEORY", isFinal: false, maxMarks: 50 },
-      { code: "CIE_T4", label: "CIE Theory 4", component: "THEORY", isFinal: false, maxMarks: 50 },
-    ],
-    SPECIALIZATION: [
-      { code: "CIE_1", label: "CIE 1", component: "THEORY", isFinal: false, maxMarks: 50 },
-      { code: "CIE_2", label: "CIE 2", component: "THEORY", isFinal: false, maxMarks: 50 },
-      { code: "SEE", label: "Final", component: "THEORY", isFinal: true, maxMarks: 100 },
-    ],
+    MAIN_THEORY: {
+      name: "Main subject, theory final exam",
+      formula: { cieOutOf: 50, seeOutOf: 50 },
+      note: "CIE: 5 parts x 50 = 250, scaled to 50. Final theory exam /100 scaled to 50. Total /100.",
+      parts: [...MAIN_CIE, { code: "SEE", label: "Final exam (theory)", component: "THEORY", isFinal: true, maxMarks: 100 }],
+    },
+    MAIN_PRACTICAL: {
+      name: "Main subject, practical final exam",
+      formula: { cieOutOf: 50, seeOutOf: 50 },
+      note: "CIE: 5 parts x 50 = 250, scaled to 50. Final practical exam /100 scaled to 50. Total /100.",
+      parts: [...MAIN_CIE, { code: "SEE", label: "Final exam (practical)", component: "PRACTICAL", isFinal: true, maxMarks: 100 }],
+    },
+    MINOR: {
+      name: "Minor subject (English / Kannada / EVS), no final",
+      formula: { cieOutOf: 50, seeOutOf: null },
+      note: "CIE: 4 theory tests + activity = 250, scaled to 50. No final exam. [OPEN] result out of 50 or 100.",
+      parts: cie([
+        ["CIE_T1", "Theory test 1", "THEORY"],
+        ["CIE_T2", "Theory test 2", "THEORY"],
+        ["CIE_T3", "Theory test 3", "THEORY"],
+        ["CIE_T4", "Theory test 4", "THEORY"],
+        ["ACT", "Activity", "THEORY"],
+      ]),
+    },
   } as const;
-  const schemeId = new Map<string, number>();
-  const schemeComponents = new Map<string, { id: number; code: string; maxMarks: number }[]>();
-  for (const [kind, comps] of Object.entries(schemeDefs)) {
-    const [scheme] = await tx
-      .insert(t.assessmentScheme)
-      .values({ name: `${kind} (placeholder)`, note: "Max marks and internal formula pending from college (PLAN.md §7)." })
-      .returning();
-    schemeId.set(kind, scheme.id);
+  type SchemeKey = keyof typeof schemeDefs;
+  const schemeId = new Map<SchemeKey, number>();
+  const schemeComponents = new Map<SchemeKey, { id: number; code: string; maxMarks: number; component: "THEORY" | "PRACTICAL" }[]>();
+  for (const [key, def] of Object.entries(schemeDefs) as [SchemeKey, (typeof schemeDefs)[SchemeKey]][]) {
+    const [scheme] = await tx.insert(t.assessmentScheme).values({ name: def.name, formula: def.formula, note: def.note }).returning();
+    schemeId.set(key, scheme.id);
     const rows = await tx
       .insert(t.schemeComponent)
-      .values(comps.map((c, i) => ({ schemeId: scheme.id, ordinal: i + 1, ...c })))
+      .values(def.parts.map((c, i) => ({ schemeId: scheme.id, ordinal: i + 1, ...c })))
       .returning();
-    schemeComponents.set(kind, rows.map((r) => ({ id: r.id, code: r.code, maxMarks: r.maxMarks })));
+    schemeComponents.set(key, rows.map((r) => ({ id: r.id, code: r.code, maxMarks: r.maxMarks, component: r.component })));
   }
+  /** Minor subjects have no final; of the 4 main subjects the first 2 have a theory final, the other 2 a practical one (dummy split). */
+  const schemeFor = (subjects: readonly SubjectDef[], i: number): SchemeKey => {
+    if (subjects[i].kind === "THEORY_ONLY") return "MINOR";
+    if (subjects[i].kind === "SPECIALIZATION") return "MAIN_PRACTICAL";
+    const nth = subjects.slice(0, i).filter((x) => x.kind === "INTEGRATED").length;
+    return nth < 2 ? "MAIN_THEORY" : "MAIN_PRACTICAL";
+  };
 
   // --- Classes, courses, offerings ------------------------------------------
   const classes: ClassInfo[] = [];
@@ -183,7 +201,7 @@ async function seed(tx: Tx, until: IsoDate) {
             shortName: subj.shortName,
             name: subj.name,
             kind: subj.kind,
-            schemeId: schemeId.get(subj.kind)!,
+            schemeId: schemeId.get(schemeFor(subjects, i))!,
           })
           .returning();
         const [o] = await tx.insert(t.courseOffering).values({ courseId: c.id, classGroupId: cg.id }).returning();
@@ -545,30 +563,37 @@ async function seed(tx: Tx, until: IsoDate) {
   }
 
   // --- Assessments & marks --------------------------------------------------
+  // Mid-term picture: tests 1 published, tests 2 mostly published (CS Sem 3 still waiting for the HOD),
+  // minor test 3 submitted, activity not entered yet. CS Sem 1 is complete including final exam marks,
+  // so totals out of 100 can be demonstrated (dummy: the real finals come after the term).
   let markCount = 0;
-  const cie1Date: IsoDate = "2026-09-22";
-  const cie2Date: IsoDate = "2026-10-15";
+  type Plan = { code: string; heldOn: IsoDate; status: "DRAFT" | "SUBMITTED" | "PUBLISHED"; fill?: number };
   for (const c of classes) {
     const hod = hodOf.get(c.deptCode)!;
-    for (const [i, subj] of c.subjects.entries()) {
+    const complete = c.deptCode === "CS" && c.semester === 1;
+    const pendingHod = c.deptCode === "CS" && c.semester === 3;
+    for (const i of c.subjects.keys()) {
       const offeringId = c.offeringIds[i];
-      const comps = schemeComponents.get(subj.kind)!;
-      const plan: { code: string; heldOn: IsoDate | null; status: "DRAFT" | "SUBMITTED" | "PUBLISHED" }[] =
-        subj.kind === "INTEGRATED"
+      const key = schemeFor(c.subjects, i);
+      const comps = schemeComponents.get(key)!;
+      const plan: Plan[] = complete
+        ? comps.map((p) => ({ code: p.code, heldOn: p.code === "SEE" ? "2026-10-30" : p.code.endsWith("1") ? "2026-09-22" : p.code === "ACT" ? "2026-10-28" : "2026-10-15", status: "PUBLISHED" }))
+        : key === "MINOR"
           ? [
-              { code: "CIE_T1", heldOn: cie1Date, status: "PUBLISHED" },
-              { code: "CIE_P1", heldOn: cie1Date, status: "PUBLISHED" },
-              { code: "CIE_T2", heldOn: null, status: "DRAFT" },
+              { code: "CIE_T1", heldOn: "2026-09-22", status: "PUBLISHED" },
+              { code: "CIE_T2", heldOn: "2026-10-15", status: "PUBLISHED" },
+              { code: "CIE_T3", heldOn: "2026-10-29", status: "SUBMITTED" },
             ]
-          : subj.kind === "THEORY_ONLY"
-            ? [
-                { code: "CIE_T1", heldOn: cie1Date, status: "PUBLISHED" },
-                { code: "CIE_T2", heldOn: cie2Date, status: "SUBMITTED" },
-              ]
-            : [{ code: "CIE_1", heldOn: cie1Date, status: "PUBLISHED" }];
+          : [
+              { code: "CIE_T1", heldOn: "2026-09-22", status: "PUBLISHED" },
+              { code: "CIE_P1", heldOn: "2026-09-22", status: "PUBLISHED" },
+              { code: "CIE_T2", heldOn: "2026-10-15", status: pendingHod ? "SUBMITTED" : "PUBLISHED" },
+              // One subject's practical test 2 is half entered (a draft in progress).
+              { code: "CIE_P2", heldOn: "2026-10-15", status: pendingHod ? "DRAFT" : "PUBLISHED", fill: pendingHod && i === 0 ? 0.5 : pendingHod ? 0 : 1 },
+            ];
       for (const p of plan) {
+        if (p.heldOn > until) continue;
         const comp = comps.find((x) => x.code === p.code)!;
-        const component = p.code.includes("_P") ? "PRACTICAL" : "THEORY";
         const [a] = await tx
           .insert(t.assessment)
           .values({
@@ -578,18 +603,21 @@ async function seed(tx: Tx, until: IsoDate) {
             heldOn: p.heldOn,
             status: p.status,
             publishedBy: p.status === "PUBLISHED" ? hod : null,
-            publishedAt: p.status === "PUBLISHED" ? new Date(`${addDays(p.heldOn!, 7)}T15:00:00+05:30`) : null,
+            publishedAt: p.status === "PUBLISHED" ? new Date(`${addDays(p.heldOn, 3)}T15:00:00+05:30`) : null,
           })
           .returning();
-        if (!p.heldOn || p.heldOn > until) continue;
-        const enteredBy = teacherOf.get(`${offeringId}-${component}`) ?? hod;
-        const marks = (studentsByClass.get(c.key) ?? [])
-          .filter((s) => s.membership.joinedOn <= p.heldOn! && (s.membership.leftOn === null || s.membership.leftOn >= p.heldOn!))
-          .map((s) => {
-            if (rng.chance(0.02)) return { assessmentId: a.id, maxMarks: a.maxMarks, studentId: s.id, value: null, flag: "AB" as const, enteredBy };
-            const pct = Math.min(1, Math.max(0.05, rng.normal(s.ability, 0.12)));
-            return { assessmentId: a.id, maxMarks: a.maxMarks, studentId: s.id, value: Math.round(pct * a.maxMarks), flag: null, enteredBy };
-          });
+        const enteredBy = teacherOf.get(`${offeringId}-${comp.component}`) ?? hod;
+        const members = (studentsByClass.get(c.key) ?? []).filter((s) => s.membership.joinedOn <= p.heldOn && (s.membership.leftOn === null || s.membership.leftOn >= p.heldOn));
+        const fill = p.fill ?? 1;
+        const marks = members.slice(0, Math.round(members.length * fill)).map((s) => {
+          if (rng.chance(0.002)) return { assessmentId: a.id, maxMarks: a.maxMarks, studentId: s.id, value: null, flag: "MP" as const, enteredBy };
+          if (rng.chance(0.02)) return { assessmentId: a.id, maxMarks: a.maxMarks, studentId: s.id, value: null, flag: "AB" as const, enteredBy };
+          const pct = Math.min(1, Math.max(0.05, rng.normal(s.ability, 0.12)));
+          // Mostly whole marks, some halves (practicals are often marked in halves).
+          const raw = pct * a.maxMarks;
+          const value = rng.chance(0.2) ? Math.round(raw * 2) / 2 : Math.round(raw);
+          return { assessmentId: a.id, maxMarks: a.maxMarks, studentId: s.id, value, flag: null, enteredBy };
+        });
         if (marks.length) await tx.insert(t.mark).values(marks);
         markCount += marks.length;
       }

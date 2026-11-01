@@ -111,6 +111,20 @@ export function canEditCalendar(a: Actor, scope: CalendarScope) {
   return isPrincipal(a) || canManageClass(a, scope.classRef);
 }
 
+/**
+ * Enter marks for one part of a subject: the teacher(s) of that part (theory tests + activity: theory
+ * teacher; practical tests: lab teacher), the HOD, or the admin. Final exam marks: HOD / admin only.
+ */
+export function canEnterMarks(a: Actor, p: { classRef: ClassRef; isFinal: boolean; assignedStaffIds: readonly number[] }) {
+  if (isAdmin(a) || hodDepartmentIds(a).includes(p.classRef.departmentId)) return true;
+  return !p.isFinal && p.assignedStaffIds.includes(a.staffId);
+}
+
+/** Publish marks to students and parents, send back, or reopen published marks. */
+export function canPublishMarks(a: Actor, c: ClassRef) {
+  return isAdmin(a) || hodDepartmentIds(a).includes(c.departmentId);
+}
+
 /** "Not yet entered" report per teacher: whole college, or the HOD's departments. */
 export function canViewCompliance(a: Actor) {
   return seesWholeCollege(a) || hodDepartmentIds(a).length > 0;
@@ -147,6 +161,7 @@ export function navFor(a: Actor): NavItem[] {
   const marks = isAdmin(a) || hodDepartmentIds(a).length > 0 || a.teachingClassIds.length > 0 || a.grants.some((g) => g.role === "FACULTY" && g.departmentId !== null);
   if (marks) items.push({ href: "/attendance", label: "Attendance" });
   if (anyClass) items.push({ href: "/leaves", label: "Leave & OD" });
+  if (anyClass) items.push({ href: "/marks", label: "Marks" });
   if (anyClass) items.push({ href: "/classes", label: "Classes" });
   if (anyClass) items.push({ href: "/students", label: "Students" });
   if (anyClass) items.push({ href: "/reports", label: "Reports" });

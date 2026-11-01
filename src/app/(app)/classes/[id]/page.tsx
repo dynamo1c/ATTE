@@ -48,6 +48,9 @@ export default async function ClassPage(props: PageProps<"/classes/[id]">) {
             <LinkButton href={`/classes/${cls.id}/attendance`} variant="secondary">
               Attendance %
             </LinkButton>
+            <LinkButton href={`/classes/${cls.id}/marks`} variant="secondary">
+              Marks
+            </LinkButton>
             <LinkButton href={`/classes/${cls.id}/timetable`} variant="secondary">
               Timetable
             </LinkButton>

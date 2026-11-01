@@ -37,7 +37,16 @@ export const TRIGGER_DEFAULT: Record<Trigger, boolean> = {
 };
 
 /** Triggers the admin can switch on/off in Settings (the rest are always on or not built yet). */
-export const CONFIGURABLE_TRIGGERS = ["WEEKLY_SUMMARY", "ATTENDANCE_WARNING", "ATTENDANCE_SHORTAGE", "CONSECUTIVE_ABSENCE", "DAY_ABSENCE", "LEAVE_RECORDED"] as const satisfies readonly Trigger[];
+export const CONFIGURABLE_TRIGGERS = [
+  "WEEKLY_SUMMARY",
+  "ATTENDANCE_WARNING",
+  "ATTENDANCE_SHORTAGE",
+  "CONSECUTIVE_ABSENCE",
+  "DAY_ABSENCE",
+  "LEAVE_RECORDED",
+  "MARKS_PUBLISHED",
+  "LOW_MARKS",
+] as const satisfies readonly Trigger[];
 
 export const TRIGGER_LABEL: Record<Trigger, string> = {
   WEEKLY_SUMMARY: "Weekly attendance summary",
@@ -204,6 +213,8 @@ export const dedupeKey = {
   day: (studentId: number, date: IsoDate, contactId: number) => `DAY:${studentId}:${date}:${contactId}`,
   leave: (leaveId: number, contactId: number) => `LEAVE:${leaveId}:${contactId}`,
   broadcast: (broadcastId: string, contactId: number) => `BROADCAST:${broadcastId}:${contactId}`,
+  /** One marks message per test per student per number: reopening and re-publishing does not resend. */
+  marks: (assessmentId: number, studentId: number, contactId: number) => `MARKS:${assessmentId}:${studentId}:${contactId}`,
   smsFallback: (original: string) => `${original}:SMS`,
 };
 

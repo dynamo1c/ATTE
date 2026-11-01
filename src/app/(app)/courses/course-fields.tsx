@@ -55,7 +55,7 @@ export function CourseFields({
           ))}
         </Select>
       </Field>
-      <Field label="Marks scheme" name="schemeId" hint="Internal tests and finals. Rules still to be confirmed by the college.">
+      <Field label="Marks scheme" name="schemeId" hint="Which tests the subject has and whether its final exam is theory, practical or none.">
         <Select id="schemeId" name="schemeId" defaultValue={values?.schemeId}>
           {schemes.map((s) => (
             <option key={s.id} value={s.id}>

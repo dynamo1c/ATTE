@@ -167,10 +167,27 @@ No college calendar system exists, so the system provides one:
 
 ## 7. Marks & assessments
 
-Per subject (confirmed):
+Confirmed by a lecturer (2026-11-01). Each semester has 5 subjects of three kinds:
 
-| Course kind | Internals (CIE) | Final (SEE) |
-|---|---|---|
+| Kind | Internals (CIE) | Final (SEE) | Result |
+|---|---|---|---|
+| Main subject, practical final (2 per sem) | Theory test 1, theory test 2, practical test 1, practical test 2, activity: **5 × 50 = 250** | Practical exam /100 | CIE /50 + SEE /50 = **/100** |
+| Main subject, theory final (2 per sem) | Same 5 × 50 = 250 | Theory exam /100 | CIE /50 + SEE /50 = **/100** |
+| Minor (English / Kannada / EVS) | Theory tests 1–4 + activity: **5 × 50 = 250** | **None** | **[OPEN]** /50 (internal only) or scaled to /100 — shown /50 until confirmed |
+
+- **CIE /50 = (sum of the 5 marks) ÷ 250 × 50.** Example: 210/250 → 42.
+- **SEE /50 = SEE /100 ÷ 2.** Example: 75/100 → 37.5.
+- **Total /100 = CIE /50 + SEE /50.** Example: 42 + 37.5 = 79.5.
+- **No rounding:** decimals are kept (42.2 stays 42.2). Display to 2 decimals at most, never rounded up.
+- **AB (absent) and MP (malpractice) count as 0**, still out of 250; the flag stays visible on the sheet.
+- A result is shown as **incomplete** while any of its marks is missing (not entered ≠ 0).
+- SEE marks are typed in by college staff (HOD / exam cell) when results come out.
+- Attendance does **not** add to marks.
+- Pass/fail, grades, SGPA/CGPA: **later**, once the college gives pass minimums, grade bands and credits.
+- Mark entry by the faculty assigned to the component (theory tests: theory teacher; practical tests: lab teacher; activity: theory teacher by default). Grid + roll-number entry, drafts kept on the device, version check like attendance.
+- Workflow: Draft → Submitted → Published (only published marks reach parents and trigger messages). Edit after publish needs HOD approval and is audited.
+
+---|---|---|
 | Integrated (main subjects) | 2 theory tests + 2 practical tests | Theory final + practical final |
 | Theory-only (EVS, Kannada, English) | 4 theory tests | **[OPEN]** final? |
 | Specialization (Sem V) | **[OPEN]** | **[OPEN]** |
@@ -340,6 +357,16 @@ Demo-ready after phases 0–4 + 6 (mock + test number).
 
 **Progress:** Phase 0 and 1 done (2026-10-31). Schema with DB-level checks, pure rule logic (attendance %, calendar, timetable, reg no, phone) with 62 unit tests, 14 database-constraint tests, deterministic dummy data seed, CI workflow, status page.
 
+**Progress:** Phase 5 done (2026-11-01).
+
+- Three marks schemes as data (`assessment_scheme.formula`, `scheme_component`): main subject with theory final, main subject with practical final, minor (no final). Each subject picks one on the Subjects screen; it can't change once marks exist.
+- Calculation in `src/lib/domain/marks.ts` (exact, in hundredths): CIE = sum ÷ 250 × 50, final ÷ 2, total = both. Not entered ≠ 0: results show "so far" (*) until every part is in.
+- Entry: the part's teacher (theory tests + activity: theory teacher; practical tests: lab teacher); final exam: HOD/admin only. Whole-list save with version check, retry-safe id, browser draft. Test date required before submitting, never in the future.
+- Workflow: Draft → Submitted (teacher) → Published (HOD/admin). HOD can send back with a note, or reopen published marks with a recorded reason. Every save/status change is audited with the changed marks.
+- Publishing queues one message per student (in the same transaction): "marks published", or "low marks" when below the low-marks level in Settings. Includes internal marks so far. Reopen + republish does not message again.
+- Views: subject results (each test, CIE /50, final /50, total), class marks sheet, student page, Reports → Low marks.
+- Safety fix found while testing: a message with no text (e.g. a stale build that didn't know a message kind) is now impossible: rendering throws, the outbox refuses empty text (the publish rolls back), and the sender fails such a row instead of sending it.
+
 **Progress:** Phase 6 done (2026-11-01).
 
 - Built triggers: weekly summary (Sunday 17:00, Mon–Sat, catch-up until Tuesday 09:00, never stale), below warning / below minimum (once per drop, remembered in `student_alert_state`; a subject needs ≥ 8 counted classes before it can alert), absent N working days in a row (Settings; days with unentered classes never count as absent), absent all day (off), leave/OD approved (off, queued in the approval transaction), notices from principal/admin to college / department / class.
@@ -394,9 +421,9 @@ Assumptions made while building (change when the college answers):
 
 From the college:
 
-1. Final internal mark formula (avg / best-of / scaling). *(student asking)*
-2. Are finals (SEE) conducted by DTE? Who enters results, and are pass/fail rules needed? *(student asking)*
-3. Max marks for each CIE test and SEE (theory and practical).
+1. ~~Final internal mark formula~~ — answered, see §7. Still open: minor subject result out of 50 or 100.
+2. ~~SEE ownership~~ — college staff enter SEE marks. Pass/fail rules, grade bands and credits: later.
+3. ~~Max marks~~ — every CIE test and activity 50, SEE 100.
 4. Sem V (specialization all day): how is attendance taken? One session per day, per period, or per module? Are there other specializations besides Cyber Security (students split by choice)?
 5. Sem VI: classes, internship, or project? Attendance needed?
 6. Attendance threshold 60%: per subject, overall, or both?
