@@ -146,6 +146,11 @@ export function canViewAudit(a: Actor) {
   return seesWholeCollege(a);
 }
 
+/** Load staff, subjects, students and timetables from Excel / CSV files: admin only. */
+export function canImport(a: Actor) {
+  return isAdmin(a);
+}
+
 export function canManageOutbox(a: Actor) {
   return isAdmin(a);
 }

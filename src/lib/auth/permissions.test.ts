@@ -16,6 +16,7 @@ import {
   canViewMessages,
   navFor,
   canViewAudit,
+  canImport,
   visibleDepartmentIds,
   type Actor,
   type Grant,
@@ -105,6 +106,7 @@ describe("permissions", () => {
 
   it("audit log: admin and principal only", () => {
     expect([admin, principal, hodCs, classTeacher, faculty].map(canViewAudit)).toEqual([true, true, false, false, false]);
+    expect([admin, principal, hodCs, classTeacher, faculty].map(canImport)).toEqual([true, false, false, false, false]);
     expect(navFor(hodCs).map((n) => n.label)).not.toContain("Audit log");
   });
 
