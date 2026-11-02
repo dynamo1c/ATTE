@@ -18,6 +18,8 @@ export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
   title: "MEI Attendance",
   description: "Attendance, marks and parent alerts for MEI Polytechnic",
+  appleWebApp: { capable: true, title: "MEI Attendance", statusBarStyle: "default" },
+  icons: { apple: "/apple-touch-icon.png" },
 };
 
 export const viewport: Viewport = {

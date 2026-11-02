@@ -6,7 +6,7 @@ Full design, rules and open questions: **[docs/PLAN.md](docs/PLAN.md)**. Read it
 
 ## Status
 
-Prototype with dummy data. Phases 0–9 done: database, rule logic with tests, dummy data, staff sign-in with roles, setup screens (staff, classes, subjects, teachers, timetables, calendar, students and parent numbers, settings), and attendance: live or from the book, late-change requests with HOD approval, leave/OD notices; attendance % per student and subject, class sheets, shortage lists and the "not yet entered" report; messages to parents (weekly summary, shortage / warning / absence alerts, notices) in English + Kannada through an outbox, with a mock sender and the WhatsApp Cloud API. marks: entry per test (theory, practical, activity, final exam), teacher → HOD → published, internal /50 + final /50 = /100 with the college's formula, low-marks report and parent messages; a parent portal (register number + phone on record + one-time code) showing attendance and published marks for every child linked to the number; Excel downloads (shortage list, class attendance + exam eligibility, monthly register, class marks, classes not entered, message delivery) and print / save-as-PDF for every report plus a student report card; hardening: audit log screen, backups with a restore check, health check, security headers, error pages, load test. Next: real data import.
+Prototype with dummy data. Phases 0–9 done: database, rule logic with tests, dummy data, staff sign-in with roles, setup screens (staff, classes, subjects, teachers, timetables, calendar, students and parent numbers, settings), and attendance: live or from the book, late-change requests with HOD approval, leave/OD notices; attendance % per student and subject, class sheets, shortage lists and the "not yet entered" report; messages to parents (weekly summary, shortage / warning / absence alerts, notices) in English + Kannada through an outbox, with a mock sender and the WhatsApp Cloud API. marks: entry per test (theory, practical, activity, final exam), teacher → HOD → published, internal /50 + final /50 = /100 with the college's formula, low-marks report and parent messages; a parent portal (register number + phone on record + one-time code) showing attendance and published marks for every child linked to the number; Excel downloads (shortage list, class attendance + exam eligibility, monthly register, class marks, classes not entered, message delivery) and print / save-as-PDF for every report plus a student report card; hardening: audit log screen, backups with a restore check, health check, security headers, error pages, load test; installs on phones (app icon, full screen). In progress: Excel / CSV import of real staff, subjects, students and timetables (checks done and tested, upload screen not yet).
 
 ## Demo sign-in (dummy data only)
 
@@ -34,6 +34,41 @@ npm run db:up        # start PostgreSQL in Docker (port 5433)
 npm run db:reset     # create tables + load dummy data (~40 s)
 npm run dev          # open http://localhost:3000
 ```
+
+### Demo on a laptop, shown on a phone
+
+Fast (everything on the laptop, phone over Wi-Fi). Do the setup at home, where the internet is good.
+
+1. Install **Node.js 22+** (nodejs.org, LTS), **Docker Desktop** (docker.com) and **Git**. Start Docker Desktop and wait until it says "running".
+2. Get the code and set it up (PowerShell):
+
+   ```bash
+   git clone https://github.com/dynamo1c/mei-attendance.git
+   cd mei-attendance
+   npm ci
+   copy .env.example .env
+   ```
+
+   Open `.env` and set `PARENT_OTP_DEMO=yes` (the parent login code then shows on screen; dummy data only).
+3. Database and the fast (production) build:
+
+   ```bash
+   npm run db:up
+   npm run db:reset
+   npm run build
+   ```
+
+4. Start it, every time before the demo (Docker Desktop must be running):
+
+   ```bash
+   npm run db:up
+   npx next start -p 3000
+   ```
+
+   It prints a `Network:` address such as `http://192.168.1.4:3000`. If Windows asks about the firewall, allow **Private networks**.
+5. On the phone: join the **same Wi-Fi** as the laptop (or turn on the phone's hotspot and connect the laptop to it), then open that Network address in Chrome. For a full-screen icon: ⋮ → **Add to Home screen**.
+
+If the phone can't open it: check both are on the same network, and that the firewall allowed Node.js on Private networks. College Wi-Fi often blocks devices from seeing each other; the phone hotspot always works.
 
 ## Commands
 
