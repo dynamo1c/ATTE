@@ -7,7 +7,7 @@ import { getDb } from "@/db/client";
 import { classGroup, classMembership, department, parentContact, parentSession, student } from "@/db/schema";
 import { newToken, PARENT_SESSION_DAYS, sha256 } from "@/lib/auth/otp";
 import { getCurrentTerm } from "./queries";
-import { requestMeta } from "./session";
+import { requestMeta, SECURE_COOKIES } from "./session";
 
 /** Cookies live under /parent only: they are never sent to staff pages, and staff cookies are separate. */
 export const PARENT_COOKIE = "mei_parent";
@@ -20,7 +20,7 @@ const TOUCH_INTERVAL_MS = 15 * 60 * 1000;
 /** Students whose status still lets parents sign in and see them. */
 export const VISIBLE_STATUSES = ["ACTIVE", "DETAINED"] as const;
 
-export const cookieBase = { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax" as const, path: PARENT_PATH };
+export const cookieBase = { httpOnly: true, secure: SECURE_COOKIES, sameSite: "lax" as const, path: PARENT_PATH };
 
 /** Call only from a Server Action. */
 export async function createParentSession(phone: string): Promise<void> {

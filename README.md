@@ -49,7 +49,10 @@ Fast (everything on the laptop, phone over Wi-Fi). Do the setup at home, where t
    copy .env.example .env
    ```
 
-   Open `.env` and set `PARENT_OTP_DEMO=yes` (the parent login code then shows on screen; dummy data only).
+   Open `.env` and set:
+
+   - `PARENT_OTP_DEMO=yes`: the parent login code shows on screen (dummy data only).
+   - `ALLOW_HTTP_COOKIES=yes`: without it, sign-in fails on the phone, because the phone opens the app over plain http and the fast build only keeps sign-in cookies on https. Demo laptop only, never on a real server.
 3. Database and the fast (production) build:
 
    ```bash
@@ -109,7 +112,7 @@ Messages are rows in the `notification` table (the outbox), written in the same 
 
 ## Running it for real (checklist)
 
-- **Behind a reverse proxy with HTTPS** (Caddy, nginx or IIS) in front of `npm run build && npm start`. Set `TRUSTED_PROXY_HOPS` to the number of proxies (default 1): the sign-in rate limits use the IP the proxy saw, and a visitor can't fake it.
+- **Behind a reverse proxy with HTTPS** (Caddy, nginx or IIS) in front of `npm run build && npm start`. Set `TRUSTED_PROXY_HOPS` to the number of proxies (default 1): the sign-in rate limits use the IP the proxy saw, and a visitor can't fake it. Leave `ALLOW_HTTP_COOKIES` and `PARENT_OTP_DEMO` empty.
 - **Scheduled jobs:** `sessions:generate` nightly, `notify:run` every 15 minutes, `db:backup` nightly, `db:restore-check` weekly.
 - **Backups off the machine:** set `BACKUP_COPY_DIR` to a OneDrive / Google Drive synced folder or an external disk. A backup only on the server is lost with the server. Backups contain student data: keep that folder private.
 - **Monitoring:** point an uptime monitor (e.g. UptimeRobot) at `/api/health`. It returns 503 if the database is down and `"messagesJob": "behind"` if the 15-minute job has stopped.

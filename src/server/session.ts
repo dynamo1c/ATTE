@@ -13,6 +13,12 @@ const TOUCH_INTERVAL_MS = 15 * 60 * 1000;
 /** Signed out after this long without use (shared lab / staff-room computers), even inside the 30 days. */
 const IDLE_MS = (Number(process.env.SESSION_IDLE_HOURS) || 72) * 60 * 60 * 1000;
 
+/**
+ * Cookies only travel over HTTPS in production. ALLOW_HTTP_COOKIES=yes turns that off for a demo on a
+ * laptop opened from a phone over Wi-Fi (http://192.168.x.x), where there is no HTTPS. Never on a real server.
+ */
+export const SECURE_COOKIES = process.env.NODE_ENV === "production" && process.env.ALLOW_HTTP_COOKIES !== "yes";
+
 const hashToken = (token: string) => createHash("sha256").update(token).digest("hex");
 
 export async function requestMeta() {
@@ -28,7 +34,7 @@ export async function createSession(staffId: number): Promise<void> {
   await getDb().insert(staffSession).values({ tokenHash: hashToken(token), staffId, expiresAt, ip: meta.ip, userAgent: meta.userAgent });
   (await cookies()).set(SESSION_COOKIE, token, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    secure: SECURE_COOKIES,
     sameSite: "lax",
     path: "/",
     expires: expiresAt,
