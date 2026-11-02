@@ -357,6 +357,12 @@ Demo-ready after phases 0–4 + 6 (mock + test number).
 
 **Progress:** Phase 0 and 1 done (2026-10-31). Schema with DB-level checks, pure rule logic (attendance %, calendar, timetable, reg no, phone) with 62 unit tests, 14 database-constraint tests, deterministic dummy data seed, CI workflow, status page.
 
+**Progress:** Phase 10 in progress (2026-11-02).
+
+- Done: reader for .xlsx / .csv uploads (no library; first non-empty tab, row numbers as in Excel, old .xls and password-protected files explained, size and zip-bomb limits). Checks for staff (matched by mobile; roles only added), subjects (matched by code; only names change by import; given to this term's class), students with up to 3 parent numbers (matched by register number; joins this term's class; never moves class or batch; consent only when the Consent column says how), and timetables (whole class from a start date; same clash and teacher rules as the screen; replaces only an unused version). Import flow: check writes nothing; import re-checks the same file inside a locked transaction and saves all or nothing, with audit rows.
+- Phone: installable as an app (manifest + icons); compact filters fixed on small screens.
+- Left: template downloads, upload route and import screen, setup script for a fresh real database (term, classes, schemes, first admin), demo-data guard for live messages.
+
 **Progress:** Phase 9 done (2026-11-01).
 
 - Security review: all 24 data-changing server actions check permission (directly or through a checking helper), every page that loads by id checks access, no raw SQL from input, 0 known vulnerable packages. Fixed: the IP used for rate limits came from a header the visitor can fake (now the rightmost `TRUSTED_PROXY_HOPS` entry); added security headers (no framing, nosniff, same-origin referrer, form-action self, HSTS in production, no X-Powered-By); staff idle sign-out (72 h).

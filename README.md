@@ -43,8 +43,8 @@ Fast (everything on the laptop, phone over Wi-Fi). Do the setup at home, where t
 2. Get the code and set it up (PowerShell):
 
    ```bash
-   git clone https://github.com/dynamo1c/mei-attendance.git
-   cd mei-attendance
+   git clone https://github.com/dynamo1c/ATTE.git
+   cd ATTE
    npm ci
    copy .env.example .env
    ```
