@@ -15,6 +15,15 @@ body {
   color: #0f172a;
 }
 
+/* Phones: links inside table rows get a finger-sized tap area without changing the row height. */
+@media (pointer: coarse) {
+  td a {
+    display: inline-block;
+    padding-block: 0.625rem;
+    margin-block: -0.625rem;
+  }
+}
+
 /*
  * Printing / "Save as PDF" (docs/PLAN.md §9): the browser renders Kannada correctly, so reports are
  * printed from the page itself. Navigation and buttons disappear; tables are shown in full.

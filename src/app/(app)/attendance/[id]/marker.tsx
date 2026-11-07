@@ -242,9 +242,9 @@ export function Marker({ session, students, mode }: { session: { id: number; ver
                 type="button"
                 onClick={() => update({ ...marks, [s.studentId]: m === "LATE" ? "PRESENT" : "LATE" })}
                 aria-label={`Mark ${s.name} late`}
-                className={`absolute right-1 top-1 rounded px-1 text-[10px] font-bold ${m === "LATE" ? "bg-amber-500 text-white" : "bg-white/70 text-slate-500"}`}
+                className="absolute right-0 top-0 grid h-8 w-8 place-items-start justify-items-end p-1"
               >
-                L
+                <span className={`rounded px-1 text-[10px] font-bold ${m === "LATE" ? "bg-amber-500 text-white" : "bg-white/70 text-slate-500"}`}>L</span>
               </button>
             </li>
           );

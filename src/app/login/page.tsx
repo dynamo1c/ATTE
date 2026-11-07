@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { DemoFill } from "@/components/demo-fill";
+import { Logo } from "@/components/ui";
 import { getCurrentStaff } from "@/server/current";
 import { demoStaffLogins } from "@/server/demo";
 import { LoginForm } from "./login-form";
@@ -15,8 +16,8 @@ export default async function LoginPage(props: PageProps<"/login">) {
     <main className="flex min-h-screen items-center justify-center px-4 py-10">
       <div className="w-full max-w-sm">
         <div className="mb-6 text-center">
-          <p className="text-xs font-semibold uppercase tracking-widest text-blue-700">MEI Polytechnic</p>
-          <h1 className="mt-1 text-2xl font-semibold text-slate-900">Staff sign in</h1>
+          <Logo className="mx-auto h-16" />
+          <h1 className="mt-4 text-2xl font-semibold text-slate-900">Staff sign in</h1>
           <p className="mt-1 text-sm text-slate-500">Attendance · Marks · Parent updates</p>
         </div>
         <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">

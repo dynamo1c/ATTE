@@ -1,4 +1,5 @@
 /** Small, dependency-free UI primitives. Server-safe (no hooks). */
+import Image from "next/image";
 import Link from "next/link";
 import type { ComponentProps, ReactNode } from "react";
 
@@ -16,6 +17,11 @@ export const buttonClass = (variant: "primary" | "secondary" | "danger" | "ghost
 
 export function LinkButton({ variant, size, className, ...props }: ComponentProps<typeof Link> & { variant?: Parameters<typeof buttonClass>[0]; size?: "sm" | "md" }) {
   return <Link className={cx(buttonClass(variant, size), className)} {...props} />;
+}
+
+/** College emblem + wordmark (cropped from the official logo, MEilogo.png). Size it with a h-* class. */
+export function Logo({ className = "h-9" }: { className?: string }) {
+  return <Image src="/mei-logo.png" width={498} height={200} alt="MEI Polytechnic" priority className={cx("w-auto", className)} />;
 }
 
 export const inputClass =
