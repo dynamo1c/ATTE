@@ -2,7 +2,7 @@ import { sql } from "drizzle-orm";
 import { getDb } from "@/db/client";
 import { ActionForm, Field, SubmitButton } from "@/components/action-form";
 import { Badge, Card, Empty, Input, NoAccess, PageHeader, Select, Textarea } from "@/components/ui";
-import { canPublishUpdates } from "@/lib/auth/permissions";
+import { canPublishUpdates, canPublishUpdateTo, hodDepartmentIds, isAdmin, isOffice } from "@/lib/auth/permissions";
 import { requireStaff } from "@/server/current";
 import { getCurrentTerm, listClasses, listDepartments } from "@/server/queries";
 import { publishUpdate, withdrawUpdate } from "./actions";
@@ -17,9 +17,12 @@ export default async function UpdatesPage() {
   const term = await getCurrentTerm();
   if (!term) return <NoAccess what="college updates (no term set up)" />;
   const db = getDb();
-  const [departments, classes, { rows: updates }] = await Promise.all([
+  // Office and admin write to anyone; an HOD only to their own department and its classes.
+  const wholeCollege = isAdmin(me.actor) || isOffice(me.actor);
+  const ownDepts = wholeCollege ? null : hodDepartmentIds(me.actor);
+  const [allDepartments, classes, { rows: updates }] = await Promise.all([
     listDepartments(),
-    listClasses(term.id),
+    listClasses(term.id, { departmentIds: ownDepts }),
     db.execute<{
       id: number;
       title: string;
@@ -32,9 +35,11 @@ export default async function UpdatesPage() {
       published_by: string;
       withdrawn_at: Date | null;
       withdrawn_by: string | null;
+      audience_dept: number | null;
     }>(sql`
       SELECT u.id, u.title, u.body_en, u.body_kn, u.send_whatsapp, u.messages, u.published_at, p.name AS published_by, u.withdrawn_at, w.name AS withdrawn_by,
-             COALESCE(d.code || ' department', cd.code || ' Sem ' || cg.semester, 'Whole college') AS audience
+             COALESCE(d.code || ' department', cd.code || ' Sem ' || cg.semester, 'Whole college') AS audience,
+             COALESCE(u.department_id, cg.department_id) AS audience_dept
       FROM college_update u
       JOIN staff p ON p.id = u.published_by
       LEFT JOIN staff w ON w.id = u.withdrawn_by
@@ -56,12 +61,13 @@ export default async function UpdatesPage() {
         GROUP BY 1`)
     : { rows: [] };
   const deliveryOf = new Map(delivery.map((d) => [d.id, d]));
+  const departments = ownDepts ? allDepartments.filter((d) => ownDepts.includes(d.id)) : allDepartments;
 
   return (
     <>
       <PageHeader
         title="College updates"
-        subtitle="Notices to parents: sent on WhatsApp (English and/or Kannada, as each parent chose) and kept on the parent portal's Updates page."
+        subtitle={`Notices to parents: sent on WhatsApp (English and/or Kannada, as each parent chose) and kept on the parent portal's Updates page.${wholeCollege ? "" : " As HOD you publish for your own department and its classes."}`}
       />
 
       <Card title="Publish an update" className="mb-6 max-w-4xl">
@@ -71,8 +77,8 @@ export default async function UpdatesPage() {
               <Input id="title" name="title" maxLength={120} placeholder="Deepavali holidays" />
             </Field>
             <Field label="For parents of" name="audience">
-              <Select id="audience" name="audience" defaultValue="college">
-                <option value="college">The whole college</option>
+              <Select id="audience" name="audience" defaultValue={wholeCollege ? "college" : departments[0] ? `dept:${departments[0].id}` : undefined}>
+                {wholeCollege && <option value="college">The whole college</option>}
                 <optgroup label="A department">
                   {departments.map((d) => (
                     <option key={d.id} value={`dept:${d.id}`}>
@@ -122,7 +128,7 @@ export default async function UpdatesPage() {
                         {u.withdrawn_at && ` · withdrawn by ${u.withdrawn_by}`}
                       </p>
                     </div>
-                    {!u.withdrawn_at && (
+                    {!u.withdrawn_at && canPublishUpdateTo(me.actor, u.audience_dept) && (
                       <ActionForm action={withdrawUpdate} confirm="Withdraw this update from the parent portal? Messages already sent stay sent.">
                         <input type="hidden" name="id" value={u.id} />
                         <SubmitButton size="sm" variant="ghost">

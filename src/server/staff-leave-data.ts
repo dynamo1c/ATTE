@@ -1,6 +1,6 @@
 import "server-only";
 import { and, gte, lte, sql } from "drizzle-orm";
-import { getDb } from "@/db/client";
+import { getDb, type DbOrTx } from "@/db/client";
 import { calendarDay } from "@/db/schema";
 import type { LeaveApplicant } from "@/lib/auth/permissions";
 import { resolveDay, type CalendarEntry } from "@/lib/domain/calendar";
@@ -9,12 +9,17 @@ import { leaveCoversClass, type DayPart } from "@/lib/domain/staff-leave";
 import { planSessionsForDay, type VersionDef } from "@/lib/domain/timetable";
 import { loadVersions } from "./generate-sessions";
 
-export async function getApplicant(staffId: number): Promise<LeaveApplicant & { name: string }> {
-  const { rows } = await getDb().execute<{ name: string; department_id: number | null; is_hod: boolean }>(sql`
-    SELECT s.name, s.department_id, EXISTS (SELECT 1 FROM role_grant g WHERE g.staff_id = s.id AND g.role = 'HOD') AS is_hod
+/** SQL: the staff row aliased `s` holds an HOD grant. */
+export const IS_HOD_SQL = sql`EXISTS (SELECT 1 FROM role_grant g WHERE g.staff_id = s.id AND g.role = 'HOD')`;
+/** SQL: the staff row aliased `s` holds a senior role, so their leave needs no approval (permissions.leaveDecidedBy). */
+export const IS_SENIOR_SQL = sql`EXISTS (SELECT 1 FROM role_grant g WHERE g.staff_id = s.id AND g.role::text IN ('ADMIN', 'PRINCIPAL', 'OFFICE', 'HOD'))`;
+
+export async function getApplicant(staffId: number, db: Pick<DbOrTx, "execute"> = getDb()): Promise<LeaveApplicant & { name: string }> {
+  const { rows } = await db.execute<{ name: string; department_id: number | null; is_hod: boolean; senior: boolean }>(sql`
+    SELECT s.name, s.department_id, ${IS_HOD_SQL} AS is_hod, ${IS_SENIOR_SQL} AS senior
     FROM staff s WHERE s.id = ${staffId}`);
   if (!rows[0]) throw new Error(`Staff ${staffId} not found`);
-  return { staffId, name: rows[0].name, departmentId: rows[0].department_id, isHod: rows[0].is_hod };
+  return { staffId, name: rows[0].name, departmentId: rows[0].department_id, isHod: rows[0].is_hod, senior: rows[0].senior };
 }
 
 export interface LeaveRef {

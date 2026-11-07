@@ -5,6 +5,7 @@ import { ActionForm, Field, SubmitButton } from "@/components/action-form";
 import { Badge, Card, Empty, Input, NoAccess, PageHeader, Select, Table, Td, Textarea, Th } from "@/components/ui";
 import { canApproveForClass, canRecordLeave, classTeacherClassIds, seesWholeCollege, visibleDepartmentIds } from "@/lib/auth/permissions";
 import { formatDateShort, todayIn } from "@/lib/domain/dates";
+import { getLeavePolicy } from "@/server/attendance-report";
 import { requireStaff } from "@/server/current";
 import { getCurrentTerm, listClasses } from "@/server/queries";
 import { createLeave, decideLeave, withdrawLeave } from "./actions";
@@ -12,6 +13,27 @@ import { createLeave, decideLeave, withdrawLeave } from "./actions";
 export const metadata = { title: "Leave & OD · MEI Attendance" };
 
 const TYPE = { MEDICAL: "Medical", ON_DUTY: "On duty (OD)", PERSONAL: "Personal", OTHER: "Other" } as const;
+const COUNTS = { PRESENT: "Present", EXCUSED: "Excused", ABSENT: "Absent" } as const;
+const COUNTS_HINT = { PRESENT: "counts as attended", EXCUSED: "left out of the %", ABSENT: "stays absent, reason shown" } as const;
+const COUNTS_TONE = { PRESENT: "green", EXCUSED: "blue", ABSENT: "slate" } as const;
+
+/** Present / Excused / Absent picker; `suggested` comes from the leave rules in Settings for the type. */
+function CountsAsSelect({ id, suggested }: { id: string; suggested?: keyof typeof COUNTS }) {
+  return (
+    <Select id={id} name="countsAs" defaultValue={suggested ?? ""} aria-label="Counts as" className="h-8 w-auto py-1">
+      {!suggested && (
+        <option value="" disabled>
+          Counts as…
+        </option>
+      )}
+      {Object.entries(COUNTS).map(([v, l]) => (
+        <option key={v} value={v}>
+          {l} ({COUNTS_HINT[v as keyof typeof COUNTS]})
+        </option>
+      ))}
+    </Select>
+  );
+}
 
 export default async function LeavesPage(props: PageProps<"/leaves">) {
   const me = await requireStaff();
@@ -26,6 +48,8 @@ export default async function LeavesPage(props: PageProps<"/leaves">) {
   const classes = seesWholeCollege(me.actor) ? all : all.filter((c) => depts?.includes(c.departmentId) || own.has(c.id));
   if (classes.length === 0) return <NoAccess what="leave notices" />;
   const canRecord = classes.some((c) => canRecordLeave(me.actor, c));
+  const approvesSome = classes.some((c) => canApproveForClass(me.actor, c));
+  const policy = await getLeavePolicy();
   const classById = new Map(classes.map((c) => [c.id, c]));
 
   const { rows } = await getDb().execute<{
@@ -35,6 +59,8 @@ export default async function LeavesPage(props: PageProps<"/leaves">) {
     to_date: string;
     reason: string | null;
     status: "PENDING" | "APPROVED" | "REJECTED";
+    counts_as: keyof typeof COUNTS | null;
+    decision_note: string | null;
     reg_no: string;
     name: string;
     student_id: number;
@@ -43,7 +69,7 @@ export default async function LeavesPage(props: PageProps<"/leaves">) {
     created_by_id: number;
     approved_by: string | null;
   }>(sql`
-    SELECT ln.id, ln.type, to_char(ln.from_date, 'YYYY-MM-DD') AS from_date, to_char(ln.to_date, 'YYYY-MM-DD') AS to_date, ln.reason, ln.status,
+    SELECT ln.id, ln.type, to_char(ln.from_date, 'YYYY-MM-DD') AS from_date, to_char(ln.to_date, 'YYYY-MM-DD') AS to_date, ln.reason, ln.status, ln.counts_as::text AS counts_as, ln.decision_note,
            s.reg_no, s.name, s.id AS student_id, m.class_group_id AS class_id, cb.name AS created_by, cb.id AS created_by_id, ab.name AS approved_by
     FROM leave_notice ln
     JOIN student s ON s.id = ln.student_id
@@ -57,7 +83,7 @@ export default async function LeavesPage(props: PageProps<"/leaves">) {
 
   return (
     <>
-      <PageHeader title="Leave & on-duty" subtitle="Students marked absent on these days are counted using the leave rules in Settings (e.g. on-duty counts as present)." />
+      <PageHeader title="Leave & on-duty" subtitle="Notices can be recorded after the day (up to 30 days back). The HOD approves each one and decides how those classes count: present (e.g. a college event), excused (left out of the %) or absent with the reason shown." />
 
       {canRecord && (
         <Card title="Record a notice" className="mb-6 max-w-4xl">
@@ -85,7 +111,12 @@ export default async function LeavesPage(props: PageProps<"/leaves">) {
             <Field label="Reason" name="reason">
               <Textarea id="reason" name="reason" rows={2} placeholder="Inter-polytechnic sports meet / fever, certificate submitted" />
             </Field>
-            <SubmitButton>Record</SubmitButton>
+            {approvesSome && (
+              <Field label="As HOD you approve it now: the classes count as" name="countsAs" hint="On duty is usually present, medical excused, personal absent.">
+                <CountsAsSelect id="countsAs" />
+              </Field>
+            )}
+            <SubmitButton>{approvesSome ? "Record and approve" : "Record (goes to the HOD)"}</SubmitButton>
           </ActionForm>
         </Card>
       )}
@@ -137,15 +168,23 @@ export default async function LeavesPage(props: PageProps<"/leaves">) {
                     <Td className="max-w-64 text-slate-600">{r.reason}</Td>
                     <Td>
                       {r.status === "PENDING" ? <Badge tone="amber">Pending</Badge> : r.status === "APPROVED" ? <Badge tone="green">Approved</Badge> : <Badge tone="red">Rejected</Badge>}
+                      {r.status === "APPROVED" && r.counts_as && (
+                        <div className="mt-1">
+                          <Badge tone={COUNTS_TONE[r.counts_as]}>Counts as {COUNTS[r.counts_as].toLowerCase()}</Badge>
+                        </div>
+                      )}
                       <div className="text-xs text-slate-500">by {r.approved_by ?? r.created_by}</div>
+                      {r.decision_note && <div className="text-xs text-slate-500">“{r.decision_note}”</div>}
                     </Td>
                     <Td>
                       <div className="flex flex-wrap gap-1">
                         {approver && r.status === "PENDING" && (
                           <>
-                            <ActionForm action={decideLeave}>
+                            <ActionForm action={decideLeave} className="flex flex-wrap items-start gap-1">
                               <input type="hidden" name="id" value={r.id} />
                               <input type="hidden" name="decision" value="APPROVED" />
+                              <CountsAsSelect id={`countsAs-${r.id}`} suggested={policy[r.type]} />
+                              <Input name="note" aria-label="Note (optional)" placeholder="Note (optional)" maxLength={200} className="h-8 w-36 py-1" />
                               <SubmitButton size="sm">Approve</SubmitButton>
                             </ActionForm>
                             <ActionForm action={decideLeave} confirm="Reject this notice?">

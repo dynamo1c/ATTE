@@ -140,6 +140,10 @@ describe.skipIf(!url)("database constraints", () => {
     const st = await one<{ id: number }>("SELECT id FROM staff LIMIT 1");
     expect(await errorCode("INSERT INTO leave_notice (student_id, type, from_date, to_date, created_by) VALUES ($1, 'MEDICAL', '2026-10-10', '2026-10-09', $2)", [s.id, st.id])).toBe(CHECK);
     expect(await errorCode("INSERT INTO leave_notice (student_id, type, from_date, to_date, created_by, status) VALUES ($1, 'MEDICAL', '2026-10-10', '2026-10-10', $2, 'APPROVED')", [s.id, st.id])).toBe(CHECK);
+    // Approved notices must say how the classes count (the HOD chooses present / excused / absent).
+    const approved = "INSERT INTO leave_notice (student_id, type, from_date, to_date, created_by, status, approved_by, approved_at, counts_as) VALUES ($1, 'ON_DUTY', '2026-10-12', '2026-10-12', $2, 'APPROVED', $2, now(), $3::leave_counts_as)";
+    expect(await errorCode(approved.replace(", counts_as)", ")").replace(", $3::leave_counts_as)", ")"), [s.id, st.id])).toBe(CHECK);
+    expect(await errorCode(approved, [s.id, st.id, "PRESENT"])).toBeNull();
   });
 
   it("staff leave: no overlapping open leave, half days split the day, nobody decides their own", async () => {
@@ -153,7 +157,8 @@ describe.skipIf(!url)("database constraints", () => {
     expect(await ins("2027-01-14", "2027-01-14", "FN")).toBe("23P01");
     expect(await ins("2027-01-15", "2027-01-16", "FN")).toBe(CHECK); // half day over two dates
     expect(await ins("2027-01-12", "2027-01-12", "FULL", "CANCELLED")).toBeNull(); // cancelled leave never blocks
-    expect(await ins("2027-01-20", "2027-01-20", "FULL", "APPROVED")).toBe(CHECK); // approved needs who decided
+    expect(await ins("2027-01-20", "2027-01-20", "FULL", "APPROVED")).toBeNull(); // approved with no decider = recorded (HOD, office: no approval needed)
+    expect(await ins("2027-01-21", "2027-01-21", "FULL", "REJECTED")).toBe(CHECK); // rejected needs who decided
     expect(
       await errorCode("INSERT INTO staff_leave (staff_id, type, from_date, to_date, reason, status, decided_by, decided_at) VALUES ($1, 'CASUAL', '2027-02-01', '2027-02-01', 'x', 'APPROVED', $1, now())", [st.id]),
     ).toBe(CHECK);

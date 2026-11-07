@@ -1,4 +1,5 @@
 import "server-only";
+import { IS_HOD_SQL, IS_SENIOR_SQL } from "./staff-leave-data";
 import { sql } from "drizzle-orm";
 import { getDb } from "@/db/client";
 import { canDecideStaffLeave, hodDepartmentIds, isAdmin, overseesCollege, type Actor } from "@/lib/auth/permissions";
@@ -23,10 +24,9 @@ export async function attentionFor(a: Actor, termId: number | null): Promise<Att
   const depts = hodDepartmentIds(a);
   const deptScope = admin ? sql`true` : depts.length ? sql`cg.department_id IN (${idList(depts)})` : sql`false`;
 
-  // Staff leave: check the decide rule per applicant (HOD → principal routing).
-  const { rows: leaves } = await db.execute<{ staffId: number; departmentId: number | null; isHod: boolean }>(sql`
-    SELECT l.staff_id AS "staffId", s.department_id AS "departmentId",
-           EXISTS (SELECT 1 FROM role_grant g WHERE g.staff_id = s.id AND g.role = 'HOD') AS "isHod"
+  // Staff leave: check the decide rule per applicant (teacher → HOD, common pool → admin).
+  const { rows: leaves } = await db.execute<{ staffId: number; departmentId: number | null; isHod: boolean; senior: boolean }>(sql`
+    SELECT l.staff_id AS "staffId", s.department_id AS "departmentId", ${IS_HOD_SQL} AS "isHod", ${IS_SENIOR_SQL} AS senior
     FROM staff_leave l JOIN staff s ON s.id = l.staff_id
     WHERE l.status = 'PENDING' AND l.staff_id <> ${a.staffId}`);
   const staffLeave = leaves.filter((l) => canDecideStaffLeave(a, l)).length;

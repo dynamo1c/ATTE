@@ -16,7 +16,9 @@ export interface SessionContext {
   status: "SCHEDULED" | "HELD" | "NOT_HELD" | "CANCELLED";
   statusReason: string | null;
   version: number;
+  /** Name of the person who first saved it, and their id (they keep the right to change it). */
   markedBy: string | null;
+  markedById: number | null;
   markedAt: string | null;
   offeringId: number;
   subject: string;
@@ -41,6 +43,7 @@ export async function getSessionContext(sessionId: number): Promise<SessionConte
     status_reason: string | null;
     version: number;
     marked_by: string | null;
+    marked_by_id: number | null;
     marked_at: string | null;
     offering_id: number;
     subject: string;
@@ -54,7 +57,7 @@ export async function getSessionContext(sessionId: number): Promise<SessionConte
     SELECT cs.id, to_char(cs.date, 'YYYY-MM-DD') AS date, cs.start_period, cs.end_period,
            to_char(ps.starts_at, 'HH24:MI') AS starts_at, to_char(pe.ends_at, 'HH24:MI') AS ends_at,
            cs.component, cs.batch_scope, cs.status, cs.status_reason, cs.version,
-           ms.name AS marked_by, to_char(cs.marked_at AT TIME ZONE 'Asia/Kolkata', 'DD Mon, HH24:MI') AS marked_at,
+           ms.name AS marked_by, cs.marked_by AS marked_by_id, to_char(cs.marked_at AT TIME ZONE 'Asia/Kolkata', 'DD Mon, HH24:MI') AS marked_at,
            o.id AS offering_id, c.short_name AS subject, c.name AS subject_name,
            cg.id AS class_id, cg.department_id, d.code || ' Sem ' || cg.semester AS class_name,
            (SELECT array_agg(ta.staff_id) FROM teaching_assignment ta
@@ -85,6 +88,7 @@ export async function getSessionContext(sessionId: number): Promise<SessionConte
     statusReason: r.status_reason,
     version: r.version,
     markedBy: r.marked_by,
+    markedById: r.marked_by_id,
     markedAt: r.marked_at,
     offeringId: r.offering_id,
     subject: r.subject,
@@ -199,5 +203,5 @@ export async function markableClassIds(a: Actor): Promise<number[] | null> {
 }
 
 export function sessionPermission(a: Actor, s: SessionContext) {
-  return canMarkSession(a, { classRef: s.classRef, assignedStaffIds: s.assignedStaffIds });
+  return canMarkSession(a, { classRef: s.classRef, assignedStaffIds: s.assignedStaffIds, markedBy: s.markedById });
 }

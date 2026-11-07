@@ -81,6 +81,15 @@ describe("evaluateSession", () => {
     expect(evaluateSession(s({ id: 1 }), member, "ABSENT", med, { ...policy, MEDICAL: "EXCUSED" })).toBe("LEAVE_EXCUSED");
   });
 
+  it("the HOD's choice on the notice wins over the default for its type", () => {
+    const eventOd = [{ type: "OTHER" as const, fromDate: "2026-10-26", toDate: "2026-10-26", countsAs: "PRESENT" as const }];
+    expect(evaluateSession(s({ id: 1 }), member, "ABSENT", eventOd, policy)).toBe("LEAVE_PRESENT"); // policy says OTHER = absent
+    const odButAbsent = [{ type: "ON_DUTY" as const, fromDate: "2026-10-26", toDate: "2026-10-26", countsAs: "ABSENT" as const }];
+    expect(evaluateSession(s({ id: 1 }), member, "ABSENT", odButAbsent, policy)).toBe("LEAVE_ABSENT"); // policy says OD = present
+    const excused = [{ type: "MEDICAL" as const, fromDate: "2026-10-26", toDate: "2026-10-26", countsAs: "EXCUSED" as const }];
+    expect(evaluateSession(s({ id: 1 }), member, "ABSENT", excused, policy)).toBe("LEAVE_EXCUSED");
+  });
+
   it("picks the most favourable of overlapping leaves", () => {
     const both = [
       { type: "MEDICAL" as const, fromDate: "2026-10-26", toDate: "2026-10-26" },

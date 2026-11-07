@@ -68,8 +68,8 @@ export default async function SettingsPage() {
           </ActionForm>
         </Card>
 
-        <Card title="How leave affects attendance %">
-          <p className="mb-4 text-sm text-slate-600">Applies when a student marked absent has an approved leave or on-duty notice for that day.</p>
+        <Card title="Suggested effect of student leave">
+          <p className="mb-4 text-sm text-slate-600">The choice the HOD sees first when approving a notice of each type. The HOD decides for each notice; changing this does not change notices already approved.</p>
           <ActionForm action={saveLeavePolicy} className="space-y-4">
             <fieldset disabled={!canEdit} className="space-y-4">
               {(Object.keys(LEAVE_LABEL) as (keyof typeof LEAVE_LABEL)[]).map((type) => (

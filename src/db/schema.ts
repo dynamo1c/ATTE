@@ -580,6 +580,10 @@ export const leaveNotice = pgTable(
     toDate: date("to_date").notNull(),
     reason: text("reason"),
     status: leaveStatus("status").notNull().default("PENDING"),
+    /** How the covered classes count, chosen by the HOD when approving (the leave type only suggests it). */
+    countsAs: leaveCountsAs("counts_as"),
+    /** Optional note from the HOD with the decision (e.g. "College sports meet"). */
+    decisionNote: text("decision_note"),
     createdBy: integer("created_by").notNull().references(() => staff.id),
     approvedBy: integer("approved_by").references(() => staff.id),
     approvedAt: timestamp("approved_at", { withTimezone: true }),
@@ -588,13 +592,15 @@ export const leaveNotice = pgTable(
   (t) => [
     check("leave_notice_date_order", sql`${t.toDate} >= ${t.fromDate}`),
     check("leave_notice_approval", sql`${t.status} = 'PENDING' OR (${t.approvedBy} IS NOT NULL AND ${t.approvedAt} IS NOT NULL)`),
+    check("leave_notice_counts_as", sql`${t.status} <> 'APPROVED' OR ${t.countsAs} IS NOT NULL`),
     index("leave_notice_student_idx").on(t.studentId, t.fromDate),
   ],
 );
 
 /**
- * A staff member's own leave. Teachers' leave is decided by their HOD; an HOD's (and anyone without a
- * department) by the principal; the admin can decide any. Nobody decides their own.
+ * A staff member's own leave. A teacher's leave is decided by their HOD (by the admin for a teacher with no
+ * department). HODs, office staff, the principal and the admin need no approval: their leave is recorded as
+ * APPROVED with no decider. Nobody decides their own.
  * Overlapping open leave for one person is refused by an exclusion constraint (migration 0008).
  */
 export const staffLeave = pgTable(
@@ -621,7 +627,7 @@ export const staffLeave = pgTable(
     check(
       "staff_leave_decided",
       sql`(${t.status} <> 'PENDING' OR ${t.decidedBy} IS NULL)
-       AND (${t.status} NOT IN ('APPROVED', 'REJECTED') OR ${t.decidedBy} IS NOT NULL)
+       AND (${t.status} <> 'REJECTED' OR ${t.decidedBy} IS NOT NULL)
        AND ((${t.decidedBy} IS NULL) = (${t.decidedAt} IS NULL))`,
     ),
     check("staff_leave_not_own", sql`${t.decidedBy} IS NULL OR ${t.decidedBy} <> ${t.staffId}`),
@@ -631,7 +637,7 @@ export const staffLeave = pgTable(
 );
 
 /**
- * College updates (notices) published by the office / principal / admin. Shown on the parent portal's
+ * College updates (notices) published by the office / admin (any audience) or an HOD (own department / its classes). Shown on the parent portal's
  * Updates page for the audience, and sent on WhatsApp through the outbox when `sendWhatsApp` is set.
  * Audience: whole college (both null), one department, or one class.
  */

@@ -39,6 +39,8 @@ export interface LeaveFact {
   type: LeaveType;
   fromDate: IsoDate;
   toDate: IsoDate;
+  /** Chosen by the HOD when approving. Missing (older data) = the leave policy for the type. */
+  countsAs?: LeaveCountsAs | null;
 }
 
 export type Outcome =
@@ -76,7 +78,7 @@ export function leaveOn(leaves: readonly LeaveFact[], date: IsoDate, policy: Lea
   let best: LeaveCountsAs | null = null;
   for (const l of leaves) {
     if (l.fromDate <= date && date <= l.toDate) {
-      const effect = policy[l.type];
+      const effect = l.countsAs ?? policy[l.type];
       if (!best || LEAVE_RANK[effect] > LEAVE_RANK[best]) best = effect;
     }
   }

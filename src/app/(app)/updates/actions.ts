@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getDb } from "@/db/client";
 import { classGroup, collegeUpdate, department } from "@/db/schema";
-import { canPublishUpdates } from "@/lib/auth/permissions";
+import { canPublishUpdates, canPublishUpdateTo } from "@/lib/auth/permissions";
 import { dedupeKey } from "@/lib/notify/rules";
 import { checkbox, int, optionalText, text } from "@/lib/forms";
 import { formAction, UserError } from "@/server/action";
@@ -24,19 +24,27 @@ export const publishUpdate = formAction(
     sendWhatsApp: checkbox(),
   }),
   async ({ audience, title, bodyEn, bodyKn, sendWhatsApp }, { me }) => {
-    ensure(canPublishUpdates(me.actor), "Only the office, principal or admin can publish college updates.");
+    ensure(canPublishUpdates(me.actor), "Only the office, admin or an HOD can publish updates.");
     const term = await getCurrentTerm();
     if (!term) throw new UserError("No term is set up.");
     const scope = parseAudience(audience);
     const db = getDb();
+    // The audience's department: null for the whole college.
+    let audienceDept: number | null = null;
     if (scope.departmentId) {
       const [d] = await db.select({ id: department.id }).from(department).where(eq(department.id, scope.departmentId));
       if (!d) throw new UserError("That department no longer exists.");
+      audienceDept = d.id;
     }
     if (scope.classGroupId) {
-      const [c] = await db.select({ id: classGroup.id }).from(classGroup).where(and(eq(classGroup.id, scope.classGroupId), eq(classGroup.termId, term.id)));
+      const [c] = await db
+        .select({ id: classGroup.id, departmentId: classGroup.departmentId })
+        .from(classGroup)
+        .where(and(eq(classGroup.id, scope.classGroupId), eq(classGroup.termId, term.id)));
       if (!c) throw new UserError("That class is not in the current term.");
+      audienceDept = c.departmentId;
     }
+    ensure(canPublishUpdateTo(me.actor, audienceDept), "An HOD can publish updates only for their own department or its classes.");
     const studentIds = sendWhatsApp ? await audienceStudentIds(db, term.id, scope) : [];
 
     const { id, queued } = await db.transaction(async (tx) => {
@@ -67,8 +75,15 @@ export const publishUpdate = formAction(
 );
 
 export const withdrawUpdate = formAction(z.object({ id: int("Update") }), async ({ id }, { me }) => {
-  ensure(canPublishUpdates(me.actor), "Only the office, principal or admin can withdraw college updates.");
+  ensure(canPublishUpdates(me.actor), "Only the office, admin or an HOD can withdraw updates.");
   const db = getDb();
+  const [target] = await db
+    .select({ departmentId: collegeUpdate.departmentId, classDept: classGroup.departmentId })
+    .from(collegeUpdate)
+    .leftJoin(classGroup, eq(classGroup.id, collegeUpdate.classGroupId))
+    .where(eq(collegeUpdate.id, id));
+  if (!target) throw new UserError("This update no longer exists.");
+  ensure(canPublishUpdateTo(me.actor, target.departmentId ?? target.classDept ?? null), "An HOD can withdraw only their own department's updates.");
   await db.transaction(async (tx) => {
     const [row] = await tx
       .update(collegeUpdate)

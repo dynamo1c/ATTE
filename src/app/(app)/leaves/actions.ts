@@ -6,7 +6,7 @@ import { z } from "zod";
 import { getDb } from "@/db/client";
 import { leaveNotice, student } from "@/db/schema";
 import { canApproveForClass, canRecordLeave } from "@/lib/auth/permissions";
-import { addDays } from "@/lib/domain/dates";
+import { addDays, todayIn } from "@/lib/domain/dates";
 import { normalizeRegNo } from "@/lib/domain/regNo";
 import { date, int, oneOf, optionalText, text } from "@/lib/forms";
 import { formAction, UserError } from "@/server/action";
@@ -18,6 +18,9 @@ import { enqueueForStudents, loadTriggerSettings, type Tx } from "@/server/notif
 import { getStudent, type StudentProfile } from "@/server/student-data";
 
 const MAX_DAYS = 60;
+/** A notice can be recorded after the days it covers (the student applies later), up to this many days back. */
+const MAX_DAYS_BACK = 30;
+const COUNTS_AS = ["PRESENT", "EXCUSED", "ABSENT"] as const;
 
 async function studentClass(studentId: number) {
   const term = await getCurrentTerm();
@@ -51,9 +54,12 @@ export const createLeave = formAction(
     fromDate: date("From"),
     toDate: date("To"),
     reason: text("Reason", 300),
+    /** Only used when the person recording can approve (HOD / admin): approved at once with this outcome. */
+    countsAs: z.preprocess((v) => (v === "" ? undefined : v), z.enum(COUNTS_AS).optional()),
   }),
   async (input, { me }) => {
     if (input.toDate < input.fromDate) throw new UserError("“To” must be on or after “From”.", { toDate: ["Before the start date"] });
+    if (input.fromDate < addDays(todayIn(), -MAX_DAYS_BACK)) throw new UserError(`A notice can start at most ${MAX_DAYS_BACK} days back.`, { fromDate: ["Too far back"] });
     if (addDays(input.fromDate, MAX_DAYS) < input.toDate) throw new UserError(`A notice can cover at most ${MAX_DAYS} days.`, { toDate: ["Too long"] });
     const db = getDb();
     const [st] = await db.select({ id: student.id }).from(student).where(eq(student.regNo, input.regNo));
@@ -68,6 +74,7 @@ export const createLeave = formAction(
     if (overlapping.length) throw new UserError(`${s.name} already has leave covering some of these days. Edit or remove that one first.`);
 
     const autoApprove = canApproveForClass(me.actor, classRef);
+    if (autoApprove && !input.countsAs) throw new UserError("Choose how these classes count.", { countsAs: ["Required"] });
     await db.transaction(async (tx) => {
       const [row] = await tx
         .insert(leaveNotice)
@@ -79,6 +86,7 @@ export const createLeave = formAction(
           reason: input.reason,
           createdBy: me.id,
           status: autoApprove ? "APPROVED" : "PENDING",
+          countsAs: autoApprove ? input.countsAs : null,
           approvedBy: autoApprove ? me.id : null,
           approvedAt: autoApprove ? new Date() : null,
         })
@@ -91,25 +99,29 @@ export const createLeave = formAction(
   },
 );
 
-export const decideLeave = formAction(z.object({ id: int("Notice"), decision: oneOf(["APPROVED", "REJECTED"], "Decision") }), async ({ id, decision }, { me }) => {
-  const db = getDb();
-  const [row] = await db.select().from(leaveNotice).where(eq(leaveNotice.id, id));
-  if (!row || row.status !== "PENDING") throw new UserError("Already decided.");
-  const { s, classRef } = await studentClass(row.studentId);
-  ensure(canApproveForClass(me.actor, classRef), "Only the HOD or admin can approve leave.");
-  await db.transaction(async (tx) => {
-    const done = await tx
-      .update(leaveNotice)
-      .set({ status: decision, approvedBy: me.id, approvedAt: new Date() })
-      .where(and(eq(leaveNotice.id, id), eq(leaveNotice.status, "PENDING")))
-      .returning({ id: leaveNotice.id });
-    if (!done.length) throw new UserError("Already decided.");
-    await audit(tx, { actorStaffId: me.id, action: decision === "APPROVED" ? "APPROVE" : "REJECT", entity: "leave_notice", entityId: id, before: row });
-    if (decision === "APPROVED") await queueLeaveMessage(tx, row, s, me.id);
-  });
-  revalidatePath("/leaves");
-  return { ok: true, message: decision === "APPROVED" ? "Approved. Attendance % now applies the leave rule." : "Rejected." };
-});
+export const decideLeave = formAction(
+  z.object({ id: int("Notice"), decision: oneOf(["APPROVED", "REJECTED"], "Decision"), countsAs: z.preprocess((v) => (v === "" ? undefined : v), z.enum(COUNTS_AS).optional()), note: optionalText(200) }),
+  async ({ id, decision, countsAs, note }, { me }) => {
+    if (decision === "APPROVED" && !countsAs) throw new UserError("Choose how these classes count: present, excused or absent.", { countsAs: ["Required"] });
+    const db = getDb();
+    const [row] = await db.select().from(leaveNotice).where(eq(leaveNotice.id, id));
+    if (!row || row.status !== "PENDING") throw new UserError("Already decided.");
+    const { s, classRef } = await studentClass(row.studentId);
+    ensure(canApproveForClass(me.actor, classRef), "Only the HOD or admin can approve leave.");
+    await db.transaction(async (tx) => {
+      const done = await tx
+        .update(leaveNotice)
+        .set({ status: decision, countsAs: decision === "APPROVED" ? countsAs : null, decisionNote: note, approvedBy: me.id, approvedAt: new Date() })
+        .where(and(eq(leaveNotice.id, id), eq(leaveNotice.status, "PENDING")))
+        .returning({ id: leaveNotice.id });
+      if (!done.length) throw new UserError("Already decided.");
+      await audit(tx, { actorStaffId: me.id, action: decision === "APPROVED" ? "APPROVE" : "REJECT", entity: "leave_notice", entityId: id, before: row, after: { countsAs, note }, reason: note });
+      if (decision === "APPROVED") await queueLeaveMessage(tx, row, s, me.id);
+    });
+    revalidatePath("/leaves");
+    return { ok: true, message: decision === "APPROVED" ? `Approved: the classes count as ${countsAs!.toLowerCase()}.` : "Rejected: the classes stay as marked." };
+  },
+);
 
 export const withdrawLeave = formAction(z.object({ id: int("Notice"), note: optionalText(200) }), async ({ id }, { me }) => {
   const db = getDb();

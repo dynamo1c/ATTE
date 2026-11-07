@@ -6,9 +6,12 @@ import { formatIndianMobile } from "@/lib/domain/phone";
 export function StaffFields({
   departments,
   values,
+  allowNone = true,
 }: {
   departments: { id: number; code: string; name: string }[];
   values?: { name: string; phone: string; email: string | null; departmentId: number | null; designation: string | null };
+  /** False for an HOD: staff they add always belong to their department. */
+  allowNone?: boolean;
 }) {
   return (
     <div className="grid gap-4 sm:grid-cols-2">
@@ -18,9 +21,9 @@ export function StaffFields({
       <Field label="Mobile number (used to sign in)" name="phone">
         <Input id="phone" name="phone" type="tel" inputMode="tel" defaultValue={values ? formatIndianMobile(values.phone) : ""} placeholder="98450 12345" />
       </Field>
-      <Field label="Department" name="departmentId" hint="Leave empty for common staff (Maths, EVS, Kannada, office).">
-        <Select id="departmentId" name="departmentId" defaultValue={values?.departmentId ?? ""}>
-          <option value="">— Common / none —</option>
+      <Field label="Department" name="departmentId" hint={allowNone ? "Leave empty for common staff (Maths, EVS, Kannada, office)." : undefined}>
+        <Select id="departmentId" name="departmentId" defaultValue={values?.departmentId ?? (allowNone ? "" : departments[0]?.id)}>
+          {allowNone && <option value="">— Common / none —</option>}
           {departments.map((d) => (
             <option key={d.id} value={d.id}>
               {d.code} — {d.name}

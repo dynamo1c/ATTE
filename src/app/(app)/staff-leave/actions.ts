@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getDb } from "@/db/client";
 import { staffLeave } from "@/db/schema";
-import { canDecideStaffLeave } from "@/lib/auth/permissions";
+import { canDecideStaffLeave, leaveDecidedBy } from "@/lib/auth/permissions";
 import { todayIn } from "@/lib/domain/dates";
 import { canCancelStaffLeave, checkStaffLeave } from "@/lib/domain/staff-leave";
 import { date, int, oneOf, optionalText, text } from "@/lib/forms";
@@ -27,14 +27,19 @@ export const applyStaffLeave = formAction(
     if (Object.keys(problems).length) {
       throw new UserError(Object.values(problems)[0], Object.fromEntries(Object.entries(problems).map(([k, v]) => [k, [v]])));
     }
+    // HODs, office, principal and admin need no approval: recorded as approved with no decider.
+    const recorded = leaveDecidedBy(await getApplicant(me.id)) === "NONE";
     // Overlap with another open leave is refused by the database (staff_leave_no_overlap).
     await getDb().transaction(async (tx) => {
-      const [row] = await tx.insert(staffLeave).values({ staffId: me.id, ...input }).returning();
+      const [row] = await tx
+        .insert(staffLeave)
+        .values({ staffId: me.id, ...input, status: recorded ? "APPROVED" : "PENDING" })
+        .returning();
       await audit(tx, { actorStaffId: me.id, action: "CREATE", entity: "staff_leave", entityId: row.id, after: row });
     });
     revalidatePath("/staff-leave");
     revalidatePath("/");
-    return { ok: true, message: "Applied. You'll see the decision here." };
+    return { ok: true, message: recorded ? "Recorded. Your classes on those days are listed for a substitute." : "Applied. You'll see the decision here." };
   },
 );
 

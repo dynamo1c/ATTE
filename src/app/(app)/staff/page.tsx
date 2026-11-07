@@ -2,7 +2,7 @@ import { sql } from "drizzle-orm";
 import Link from "next/link";
 import { getDb } from "@/db/client";
 import { Badge, Card, Empty, Input, LinkButton, NoAccess, PageHeader, Select, Table, Td, Th, buttonClass } from "@/components/ui";
-import { ROLE_LABEL, canManageStaff, canViewStaffList, visibleDepartmentIds, type Role } from "@/lib/auth/permissions";
+import { ROLE_LABEL, canAddStaff, canViewStaffList, type Role } from "@/lib/auth/permissions";
 import { formatIndianMobile } from "@/lib/domain/phone";
 import { requireStaff } from "@/server/current";
 import { listDepartments } from "@/server/queries";
@@ -18,11 +18,9 @@ export default async function StaffPage(props: PageProps<"/staff">) {
   const showInactive = sp.inactive === "1";
 
   const departments = await listDepartments();
-  const visible = visibleDepartmentIds(me.actor);
   const deptFilter = deptParam === "common" ? "common" : departments.find((d) => String(d.id) === deptParam)?.id ?? null;
 
   const conds = [sql`true`];
-  if (visible) conds.push(sql`s.department_id IN (${sql.join(visible.map((d) => sql`${d}`), sql`, `)})`);
   if (deptFilter === "common") conds.push(sql`s.department_id IS NULL`);
   else if (deptFilter) conds.push(sql`s.department_id = ${deptFilter}`);
   if (!showInactive) conds.push(sql`s.active`);
@@ -43,21 +41,19 @@ export default async function StaffPage(props: PageProps<"/staff">) {
 
   return (
     <>
-      <PageHeader title="Staff" subtitle={`${rows.length} shown`} actions={canManageStaff(me.actor) && <LinkButton href="/staff/new">Add staff</LinkButton>} />
+      <PageHeader title="Staff" subtitle={`${rows.length} shown`} actions={canAddStaff(me.actor) && <LinkButton href="/staff/new">Add staff</LinkButton>} />
       <Card>
         <form method="get" className="mb-4 flex flex-wrap items-end gap-2">
           <Input name="q" defaultValue={q} placeholder="Search name or phone" className="max-w-xs" />
-          {!visible && (
-            <Select name="dept" defaultValue={deptParam} className="max-w-56">
-              <option value="">All departments</option>
-              {departments.map((d) => (
-                <option key={d.id} value={d.id}>
-                  {d.code} — {d.name}
-                </option>
-              ))}
-              <option value="common">Common (Maths, EVS, Kannada…)</option>
-            </Select>
-          )}
+          <Select name="dept" defaultValue={deptParam} className="max-w-56">
+            <option value="">All departments</option>
+            {departments.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.code} — {d.name}
+              </option>
+            ))}
+            <option value="common">Common (Maths, EVS, Kannada…)</option>
+          </Select>
           <label className="flex items-center gap-1.5 text-sm text-slate-600">
             <input type="checkbox" name="inactive" value="1" defaultChecked={showInactive} /> Show inactive
           </label>

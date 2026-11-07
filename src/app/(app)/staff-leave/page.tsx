@@ -6,7 +6,7 @@ import { canDecideStaffLeave, hodDepartmentIds, leaveDecidedBy, staffLeaveScope 
 import { formatDateShort, todayIn } from "@/lib/domain/dates";
 import { canCancelStaffLeave, DAY_PART, formatLeaveDates, leaveDayCount, STAFF_LEAVE_TYPE, type DayPart, type StaffLeaveStatus, type StaffLeaveType } from "@/lib/domain/staff-leave";
 import { requireStaff } from "@/server/current";
-import { classesDuringLeaves, getApplicant, type MissedClass } from "@/server/staff-leave-data";
+import { classesDuringLeaves, getApplicant, type MissedClass, IS_HOD_SQL, IS_SENIOR_SQL } from "@/server/staff-leave-data";
 import { applyStaffLeave, cancelStaffLeave, decideStaffLeave } from "./actions";
 
 export const metadata = { title: "Staff leave · MEI Attendance" };
@@ -19,6 +19,7 @@ type LeaveRow = {
   dept: string | null;
   departmentId: number | null;
   isHod: boolean;
+  senior: boolean;
   type: StaffLeaveType;
   fromDate: string;
   toDate: string;
@@ -50,7 +51,7 @@ export default async function StaffLeavePage() {
         : sql`l.staff_id = ${me.id}`;
   const { rows } = await getDb().execute<LeaveRow>(sql`
     SELECT l.id, l.staff_id AS "staffId", s.name, s.designation, d.code AS dept, s.department_id AS "departmentId",
-           EXISTS (SELECT 1 FROM role_grant g WHERE g.staff_id = s.id AND g.role = 'HOD') AS "isHod",
+           ${IS_HOD_SQL} AS "isHod", ${IS_SENIOR_SQL} AS senior,
            l.type, to_char(l.from_date, 'YYYY-MM-DD') AS "fromDate", to_char(l.to_date, 'YYYY-MM-DD') AS "toDate", l.part, l.reason, l.status,
            db.name AS "decidedBy", l.decision_note AS "decisionNote", to_char(l.created_at, 'YYYY-MM-DD') AS "appliedOn"
     FROM staff_leave l
@@ -67,13 +68,14 @@ export default async function StaffLeavePage() {
   const upcoming = others.filter((r) => r.status === "APPROVED" && r.toDate >= today).sort((a, b) => (a.fromDate < b.fromDate ? -1 : 1));
   const missed = await classesDuringLeaves([...toDecide, ...upcoming]);
   const self = await getApplicant(me.id);
-  const decider = leaveDecidedBy(self) === "HOD" ? "your HOD" : "the principal";
+  const by = leaveDecidedBy(self);
+  const decider = by === "HOD" ? "It is decided by your HOD." : by === "ADMIN" ? "It is decided by the admin." : "It is recorded straight away (no approval needed).";
 
   return (
     <>
       <PageHeader
         title={scope === "OWN" ? "My leave" : "Staff leave"}
-        subtitle={scope === "OWN" ? `Apply for your own leave. It is decided by ${decider}.` : "Your own leave, and leave of the staff you look after."}
+        subtitle={scope === "OWN" ? `Apply for your own leave. ${decider}` : "Your own leave, and leave of the staff you look after."}
       />
 
       {toDecide.length > 0 && (
@@ -153,7 +155,7 @@ export default async function StaffLeavePage() {
             <Field label="Reason" name="reason">
               <Textarea id="reason" name="reason" rows={2} placeholder="Family function / fever / exam duty at another college" />
             </Field>
-            <p className="text-xs text-slate-500">Decided by {decider}.</p>
+            <p className="text-xs text-slate-500">{decider}</p>
             <SubmitButton>Apply</SubmitButton>
           </ActionForm>
         </Card>

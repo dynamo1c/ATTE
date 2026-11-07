@@ -42,11 +42,19 @@ Next 16 specifics: `PageProps<"/route">`, `RouteContext<"/route">`, `LayoutProps
 ## Current status (2026-11-03)
 
 Phases 0–9 done. **Roles for the demo done** (PLAN.md §3 and the 2026-11-03 progress note): office role,
-staff leave (`staff_leave`, HOD / principal decide, overlap refused by an exclusion constraint in migration
-0008), college updates (`college_update`, outbox + parent portal), dashboard attention list and department
+staff leave (`staff_leave`, the HOD decides teachers' leave, senior roles' leave is recorded without approval,
+overlap refused by an exclusion constraint in migration 0008), college updates (`college_update`, outbox + parent portal), dashboard attention list and department
 overview (`src/server/overview.ts`), parent Updates / Calendar pages, WhatsApp setup check and the
 dummy-data send guard (`providersFor`, `college_settings.demo_data`; always use it, not providersFromEnv).
 Courses are unique per (department, code). Seed has C-25 subjects (docs/c25-subjects.md).
+**Role redesign (2026-11-07, PLAN.md §3):** principal view-only; HOD adds own-department staff
+(`canManageStaffMember`, `canGrantRole`) and publishes own-department updates (`canPublishUpdateTo`);
+"Department today" (`/today`, `src/server/department-day.ts`): any faculty of the department takes an
+untaken class, a saved one stays with the saver / subject teacher / HOD (`canMarkSession` + `markedBy`, first
+saver kept); class teacher "My class" (`/my-class`, `src/server/class-status.ts`); the HOD picks how each
+student leave counts (`leave_notice.counts_as`, migration 0009; leave policy is only the suggestion).
+WhatsApp: Twilio sender (`NOTIFY_PROVIDER=twilio`) and `NOTIFY_MONTHLY_LIMIT` exist; the Twilio trial sender
+only takes templates, so demos run on mock until the college's Meta business account is verified.
 Next the owner may ask for: principal ↔ HOD messaging (waiting on what the principal needs).
 
 **Phase 10 (real data import) in progress:**

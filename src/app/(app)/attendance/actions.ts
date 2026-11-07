@@ -97,7 +97,14 @@ export async function saveAttendance(raw: SaveInput): Promise<SaveResult> {
       }
       const [updated] = await tx
         .update(classSession)
-        .set({ status: "HELD", statusReason: null, markedBy: me.id, markedAt: new Date(), version: sql`${classSession.version} + 1` })
+        .set({
+          status: "HELD",
+          statusReason: null,
+          // The first person to save keeps the "saved by" (and with it the right to change it); later edits are audited.
+          markedBy: sql`coalesce(${classSession.markedBy}, ${me.id})`,
+          markedAt: sql`coalesce(${classSession.markedAt}, now())`,
+          version: sql`${classSession.version} + 1`,
+        })
         .where(eq(classSession.id, s.id))
         .returning({ version: classSession.version });
       await audit(tx, {

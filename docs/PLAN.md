@@ -45,11 +45,11 @@ Rule that follows: **nothing about "5 subjects", "4 internals" or "2 batches" is
 | Role | Scope | Can do |
 |---|---|---|
 | Admin | Whole college | Everything: setup, users, calendar, imports, message settings and outbox, audit log; decides anyone's leave (except their own) |
-| Principal | Whole college | View every dashboard, department and report; per-department overview with HOD contacts; decides HODs' (and office staff's) leave; publishes college updates; audit log. Changes nothing inside departments. **[OPEN]** a principal ↔ HOD messaging space, once the principal says what is needed |
-| Office | Whole college | Keeps the college calendar (holidays, exams, events; the only role besides admin that edits it); publishes college updates (WhatsApp + parent portal); edits students and parent numbers college-wide; views and downloads every report. Never attendance or marks |
-| HOD | Own department | Manage department subjects, timetables, faculty assignment; approve late edits, student leave and **teachers' own leave**; publish marks; see compliance |
-| Faculty | Assigned subject + batch combos | Mark attendance, enter marks for their assessments, view their classes; apply for own leave |
-| Class teacher | One class (dept + semester) | Everything faculty can for that class + leave/OD entry, student/parent contact edits, class reports |
+| Principal | Whole college | **View only** (decided 2026-11-07): every dashboard, department overview with HOD contacts, report, staff list, parent messages, audit log. Approves nothing (no leave of anyone), publishes nothing, marks nothing. **[OPEN]** a principal ↔ HOD messaging space, once the principal says what is needed |
+| Office | Whole college | Keeps the college calendar (holidays, exams, events; the only role besides admin that edits it); publishes college updates (WhatsApp + parent portal); edits students and parent numbers college-wide; views and downloads every report, marks included, but never changes attendance or marks. Own leave is recorded without approval |
+| HOD | Own department | Manage department subjects, timetables, faculty assignment; **adds the department's staff** (as faculty; can make them class teacher of a department class; can edit / reset / deactivate them, never senior roles); approve late edits; approve student leave choosing **present / excused / absent** for each notice; decide **teachers' own leave**; publish marks; publish updates for the department or its classes; see compliance. Teaches own subjects like any teacher. Own leave is recorded without approval |
+| Faculty | Department + assigned subjects | **Department today** page: every class of the department period by period with who saved it; takes attendance for any class nobody has saved yet (substitute). A saved class stays with the person who saved it, the subject teacher and the HOD. Marks for their assessments; apply for own leave (HOD decides; common-pool teachers: admin). No parent messages |
+| Class teacher | One class (dept + semester) | Everything faculty can + **My class** page (today's periods and who took them, classes not entered this week per teacher, marks entry status per test, shortage list), leave/OD entry for the class (also after the day, up to 30 days back; HOD approves), student/parent contact edits. Teaches own subjects like any teacher |
 | Parent | Own child(ren) | View attendance, marks, the college calendar and college updates; receive WhatsApp/SMS |
 
 - Roles are **scoped grants** (user × role × scope). One person can be faculty for 3 subjects *and* class teacher of CS Sem 3 *and* HOD.
@@ -117,8 +117,8 @@ Key constraints (enforced in the database, not just code):
 | Present | present | Default |
 | Absent | absent | |
 | Late | present | Separate button, recorded as late (confirmed) |
-| On Duty (OD) | **[OPEN]** default: present | Sports, NSS, college events. Comes from a leave notice. |
-| Medical / leave | **[OPEN]** default: absent but annotated | Configurable per leave type: present / excused (removed from total) / absent |
+| On Duty (OD) | chosen by the HOD per notice (suggested: present) | Sports, NSS, college events. Comes from a leave notice. |
+| Medical / leave | chosen by the HOD per notice: present / excused (removed from total) / absent (reason shown) | The leave policy in Settings only sets the suggested choice per type |
 
 ### 5.3 Two ways to mark (both first-class)
 
@@ -359,7 +359,9 @@ Demo-ready after phases 0–4 + 6 (mock + test number).
 
 **Progress:** Phase 0 and 1 done (2026-10-31). Schema with DB-level checks, pure rule logic (attendance %, calendar, timetable, reg no, phone) with 62 unit tests, 14 database-constraint tests, deterministic dummy data seed, CI workflow, status page.
 
-**Progress:** Roles for the demo done (2026-11-03), on top of phase 10 work.
+**Progress:** Roles for the demo done (2026-11-03), on top of phase 10 work. Role redesign done (2026-11-07):
+principal view-only, HOD adds department staff and publishes department updates, Department today page for
+substitutes, class teacher's My class page, per-notice leave outcome (migration 0009).
 
 - Office role (calendar, college updates, students college-wide, all reports; no attendance or marks). Calendar editing moved to office + admin only.
 - Staff leave: apply (CL / medical / EL / OD / other, full or half day, up to 30 days back and 180 ahead), HOD decides teachers', principal decides HODs' and staff without a department, admin any, never your own (also a DB check). Overlapping open leave is refused by an exclusion constraint (half days FN / AN may share a date). Waiting and upcoming approved leave list the timetable classes that need a substitute.

@@ -4,7 +4,7 @@ import { getDb } from "@/db/client";
 import { roleGrant, staff } from "@/db/schema";
 import { ActionForm, Field, SubmitButton } from "@/components/action-form";
 import { Badge, Card, Empty, NoAccess, PageHeader, Select, Table, Td, Th } from "@/components/ui";
-import { ROLE_LABEL, canManageStaff, canViewStaffList, visibleDepartmentIds } from "@/lib/auth/permissions";
+import { ROLE_LABEL, SENIOR_ROLES, canManageStaffMember, canViewStaffList, hodDepartmentIds, isAdmin, type Role } from "@/lib/auth/permissions";
 import { formatIndianMobile } from "@/lib/domain/phone";
 import { requireStaff } from "@/server/current";
 import { getCurrentTerm, listClasses, listDepartments, parseId } from "@/server/queries";
@@ -19,16 +19,18 @@ export default async function StaffDetailPage(props: PageProps<"/staff/[id]">) {
   const db = getDb();
   const [person] = await db.select().from(staff).where(eq(staff.id, id));
   if (!person) notFound();
-  const visible = visibleDepartmentIds(me.actor);
-  if (visible && (person.departmentId === null || !visible.includes(person.departmentId))) return <NoAccess what="this profile" />;
-
-  const canEdit = canManageStaff(me.actor);
   const term = await getCurrentTerm();
-  const [departments, classes, grants, teaching, lastSeen] = await Promise.all([
+  const admin = isAdmin(me.actor);
+  const own = hodDepartmentIds(me.actor);
+  const { rows: roleRows } = await db.execute<{ role: Role }>(sql`SELECT role::text AS role FROM role_grant WHERE staff_id = ${id}`);
+  const canEdit = canManageStaffMember(me.actor, { staffId: id, departmentId: person.departmentId, roles: roleRows.map((r) => r.role) });
+  // Roles and places this viewer may hand out: everything for the admin; Faculty / class teacher in their department for an HOD.
+  const roleChoices = Object.entries(ROLE_LABEL).filter(([r]) => admin || !SENIOR_ROLES.includes(r as Role) && r !== "ADMIN");
+  const [allDepartments, classes, grants, teaching, lastSeen] = await Promise.all([
     listDepartments(),
-    term ? listClasses(term.id) : Promise.resolve([]),
-    db.execute<{ id: number; role: keyof typeof ROLE_LABEL; dept: string | null; class_dept: string | null; semester: number | null }>(sql`
-      SELECT g.id, g.role, d.code AS dept, cd.code AS class_dept, cg.semester
+    term ? listClasses(term.id, { departmentIds: admin ? null : own }) : Promise.resolve([]),
+    db.execute<{ id: number; role: keyof typeof ROLE_LABEL; dept: string | null; dept_id: number | null; class_dept: string | null; class_dept_id: number | null; semester: number | null }>(sql`
+      SELECT g.id, g.role, d.code AS dept, g.department_id AS dept_id, cd.code AS class_dept, cg.department_id AS class_dept_id, cg.semester
       FROM ${roleGrant} g
       LEFT JOIN department d ON d.id = g.department_id
       LEFT JOIN class_group cg ON cg.id = g.class_group_id
@@ -45,6 +47,9 @@ export default async function StaffDetailPage(props: PageProps<"/staff/[id]">) {
       ORDER BY d.code, cg.semester, c.short_name`),
     db.execute<{ last_seen: string | null }>(sql`SELECT to_char(max(last_seen_at), 'DD Mon YYYY, HH24:MI') AS last_seen FROM staff_session WHERE staff_id = ${id}`),
   ]);
+
+  const departments = admin ? allDepartments : allDepartments.filter((d) => own.includes(d.id));
+  const profileDepartments = canEdit ? departments : allDepartments;
 
   return (
     <>
@@ -63,7 +68,7 @@ export default async function StaffDetailPage(props: PageProps<"/staff/[id]">) {
           <ActionForm action={updateStaff} className="space-y-4">
             <input type="hidden" name="id" value={person.id} />
             <fieldset disabled={!canEdit}>
-              <StaffFields departments={departments} values={person} />
+              <StaffFields departments={profileDepartments} values={person} allowNone={admin || !canEdit} />
             </fieldset>
             {canEdit && <SubmitButton>Save profile</SubmitButton>}
           </ActionForm>
@@ -86,7 +91,7 @@ export default async function StaffDetailPage(props: PageProps<"/staff/[id]">) {
                       </span>
                     )}
                   </span>
-                  {canEdit && (
+                  {canEdit && (admin || (g.role === "FACULTY" && g.dept_id !== null && own.includes(g.dept_id)) || (g.role === "CLASS_TEACHER" && g.class_dept_id !== null && own.includes(g.class_dept_id))) && (
                     <ActionForm action={revokeRole} confirm={`Remove ${ROLE_LABEL[g.role]} role from ${person.name}?`}>
                       <input type="hidden" name="grantId" value={g.id} />
                       <SubmitButton variant="danger" size="sm">
@@ -104,7 +109,7 @@ export default async function StaffDetailPage(props: PageProps<"/staff/[id]">) {
               <div className="grid gap-3 sm:grid-cols-3">
                 <Field label="Add role" name="role">
                   <Select id="role" name="role" defaultValue="FACULTY">
-                    {Object.entries(ROLE_LABEL).map(([v, label]) => (
+                    {roleChoices.map(([v, label]) => (
                       <option key={v} value={v}>
                         {label}
                       </option>

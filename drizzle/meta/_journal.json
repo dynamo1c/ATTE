@@ -64,6 +64,13 @@
       "when": 1793644423482,
       "tag": "0008_roles_staff_leave_updates",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1794041969646,
+      "tag": "0009_leave_outcome_self_recorded",
+      "breakpoints": true
     }
   ]
 }

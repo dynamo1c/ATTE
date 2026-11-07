@@ -124,8 +124,8 @@ export async function loadClassAttendance(
       JOIN class_session cs ON cs.id = ar.session_id
       JOIN course_offering o ON o.id = cs.offering_id
       WHERE o.class_group_id = ${classId} AND cs.date BETWEEN ${from}::date AND ${to}::date AND cs.status = 'HELD' ${markStudents}`),
-    () => db.execute<{ student_id: number; type: LeaveFact["type"]; from_date: string; to_date: string }>(sql`
-      SELECT ln.student_id, ln.type::text, to_char(ln.from_date, 'YYYY-MM-DD') AS from_date, to_char(ln.to_date, 'YYYY-MM-DD') AS to_date
+    () => db.execute<{ student_id: number; type: LeaveFact["type"]; from_date: string; to_date: string; counts_as: LeaveFact["countsAs"] }>(sql`
+      SELECT ln.student_id, ln.type::text, to_char(ln.from_date, 'YYYY-MM-DD') AS from_date, to_char(ln.to_date, 'YYYY-MM-DD') AS to_date, ln.counts_as::text AS counts_as
       FROM leave_notice ln
       WHERE ln.status = 'APPROVED' AND ln.to_date >= ${from}::date AND ln.from_date <= ${to}::date
         AND ln.student_id IN (SELECT m.student_id FROM class_membership m WHERE m.class_group_id = ${classId} ${onlyStudents})`),
@@ -141,7 +141,7 @@ export async function loadClassAttendance(
   const leavesByStudent = new Map<number, LeaveFact[]>();
   for (const r of leavesRes.rows) {
     const list = leavesByStudent.get(r.student_id) ?? [];
-    list.push({ type: r.type, fromDate: r.from_date, toDate: r.to_date });
+    list.push({ type: r.type, fromDate: r.from_date, toDate: r.to_date, countsAs: r.counts_as });
     leavesByStudent.set(r.student_id, list);
   }
   const labels = rollLabels(membersRes.rows.map((r) => ({ studentId: r.student_id, regNo: r.reg_no })));

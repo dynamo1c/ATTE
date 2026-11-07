@@ -31,10 +31,11 @@ While the dummy data is loaded, both sign-in pages list these: tap a role to fil
 | Role | Can do |
 |---|---|
 | Admin | Everything; staff accounts and roles, settings, message queue, audit log |
-| Principal | Sees every department: dashboard overview per department (attendance, shortage, not entered, marks waiting, staff leave, HOD phone / WhatsApp); decides HODs' leave; publishes college updates |
-| Office | College calendar (holidays, exams, events), college updates (WhatsApp + parent portal), student and parent-number edits for any class, every report. No attendance or marks |
-| HOD | Own department: timetable, subjects, teachers, students; approves attendance changes, student leave, teachers' leave (sees which classes need a substitute); publishes marks |
-| Teacher (faculty / class teacher) | Attendance, marks, student leave for their class, own leave |
+| Principal | View only: every department's overview (attendance, shortage, not entered, marks waiting, staff leave, HOD phone / WhatsApp), every report, staff, messages, audit log. Approves and publishes nothing |
+| Office | College calendar (holidays, exams, events), college updates (WhatsApp + parent portal), student and parent-number edits for any class, every report including marks (read only). Own leave needs no approval |
+| HOD | Own department: timetable, subjects, teachers, students; adds its staff (as faculty, can make them class teacher); approves attendance changes, student leave (choosing present / excused / absent) and teachers' leave; publishes marks and the department's updates. Own leave needs no approval |
+| Teacher | **Department today**: every class of the department period by period, take any class nobody has saved (substitute); marks for own subjects; own leave (HOD decides) |
+| Class teacher | Everything a teacher can, plus **My class**: today's periods and who took them, classes not entered this week per teacher, marks entry status, shortage list; student leave / OD for the class (HOD approves) |
 | Parent | Child's attendance, marks, college calendar and updates, after register number + mobile + one-time code | With the mock sender (`NOTIFY_PROVIDER=mock`) nothing is really sent, so the code is shown on screen in development, or in a production build when `PARENT_OTP_DEMO=yes`.
 
 ## Run it locally

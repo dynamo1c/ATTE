@@ -13,7 +13,7 @@
  * - Leave/OD notices; marks mid-term (tests 1 and 2), CS Sem 1 complete with final exam marks
  * - Edge cases: detained student, lateral entries, mid-term joiner, batch change, dropout
  * - One account per role (admin, principal, office, HODs, class teachers, teachers), staff leave
- *   (past, today, waiting for the HOD / principal), college updates with their (mock-sent) WhatsApp messages
+ *   (past, today, waiting for the HOD; HOD and office leave recorded without approval), college updates with their (mock-sent) WhatsApp messages
  * - DEMO_PARENT_PHONE (.env): your own number for the demo guardian, so the parent portal code and
  *   updates reach your phone when a real WhatsApp provider is set up (with NOTIFY_ALLOWED_NUMBERS).
  */
@@ -538,6 +538,7 @@ async function seed(tx: Tx, until: IsoDate) {
       toDate: to,
       reason: type === "ON_DUTY" ? rng.pick(["Inter-polytechnic sports meet", "NSS camp", "Technical fest"]) : type === "MEDICAL" ? "Fever (medical certificate submitted)" : "Family function",
       status,
+      countsAs: status === "APPROVED" ? (type === "ON_DUTY" ? "PRESENT" : type === "MEDICAL" ? "EXCUSED" : "ABSENT") : null,
       createdBy: classTeacherOf.get(c.key)!,
       approvedBy: status === "APPROVED" ? hodOf.get(c.deptCode)! : null,
       approvedAt: status === "APPROVED" ? new Date(`${to}T16:00:00+05:30`) : null,
@@ -561,6 +562,9 @@ async function seed(tx: Tx, until: IsoDate) {
         const teacher = teacherOf.get(`${p.offeringId}-${p.component}`)!;
         const pendingWindow = date > lastMarkedDay;
         const status = pendingWindow && rng.chance(0.4) ? "SCHEDULED" : rng.chance(0.015) ? "NOT_HELD" : "HELD";
+        // Now and then another teacher of the department covered the class (substitute) and saved it.
+        const covers = (pools.get(c.deptCode) ?? []).map((d) => staffId.get(d)!).filter((id) => id !== teacher);
+        const savedBy = status === "HELD" && covers.length && rng.chance(0.04) ? rng.pick(covers) : teacher;
         sessionDrafts.push({
           offeringId: p.offeringId,
           component: p.component,
@@ -572,7 +576,7 @@ async function seed(tx: Tx, until: IsoDate) {
           slotId: p.slotId,
           status,
           statusReason: status === "NOT_HELD" ? "Faculty on leave" : null,
-          markedBy: status === "SCHEDULED" ? null : teacher,
+          markedBy: status === "SCHEDULED" ? null : savedBy,
           markedAt: status === "SCHEDULED" ? null : new Date(`${date}T${rng.chance(0.6) ? "17:30" : "12:45"}:00+05:30`),
         });
       }
@@ -698,7 +702,6 @@ async function seed(tx: Tx, until: IsoDate) {
       createdAt: at(appliedOn, "09:30"),
     });
   };
-  const principalId = staffId.get(principal)!;
   const workingDay = (d: IsoDate) => (isoWeekday(d) === 7 ? addDays(d, 1) : d);
   // Past leave, decided by each department's HOD.
   const pastReasons = ["Family function", "Fever", "Exam duty at another polytechnic (OD)", "Personal work", "Child unwell"] as const;
@@ -722,7 +725,8 @@ async function seed(tx: Tx, until: IsoDate) {
   if (freeCs[0]) addStaffLeave(freeCs[0], { type: "MEDICAL", from: workingDay(addDays(until, 1)), to: workingDay(addDays(until, 2)), reason: "Minor surgery (certificate will be submitted)" }, { status: "PENDING" });
   if (freeCs[1]) addStaffLeave(freeCs[1], { type: "ON_DUTY", from: workingDay(until), reason: "Board of examiners meeting, DTE" }, { status: "APPROVED", by: hodOf.get("CS") });
   addStaffLeave(csPool[0], { type: "EARNED", from: workingDay(addDays(until, 15)), to: workingDay(addDays(until, 16)), reason: "Family function out of station" }, { status: "PENDING" });
-  addStaffLeave(officeClerk, { type: "CASUAL", from: workingDay(addDays(until, 4)), reason: "Bank work" }, { status: "PENDING" });
+  // Office staff and HODs need no approval: recorded as approved with no decider.
+  addStaffLeave(officeClerk, { type: "CASUAL", from: workingDay(addDays(until, 4)), reason: "Bank work" }, { status: "APPROVED" });
   const ecFree = pools.get("EC")!.find((s, i) => i > 3 && !usedForLeave.has(s));
   if (ecFree) addStaffLeave(ecFree, { type: "MEDICAL", from: workingDay(until), reason: "Fever" }, { status: "APPROVED", by: hodOf.get("EC") });
   const meFree = pools.get("ME")!.find((s, i) => i > 3 && !usedForLeave.has(s));
@@ -730,7 +734,7 @@ async function seed(tx: Tx, until: IsoDate) {
   const eeFree = pools.get("EE")!.find((s, i) => i > 3 && !usedForLeave.has(s));
   if (eeFree) addStaffLeave(eeFree, { type: "CASUAL", from: workingDay(addDays(until, 5)), reason: "Personal work" }, { status: "CANCELLED" });
   const ceHod = pools.get("CE")![0];
-  addStaffLeave(ceHod, { type: "CASUAL", from: workingDay(addDays(until, -12)), reason: "Personal work" }, { status: "APPROVED", by: principalId });
+  addStaffLeave(ceHod, { type: "CASUAL", from: workingDay(addDays(until, -12)), reason: "Personal work" }, { status: "APPROVED" });
   await tx.insert(t.staffLeave).values(staffLeaveRows);
 
   // --- College updates, with their WhatsApp messages (already "sent" by the mock) --------
@@ -740,7 +744,7 @@ async function seed(tx: Tx, until: IsoDate) {
       title: "Welcome to the odd semester 2026-27",
       en: "Classes for Sem 1, 3 and 5 begin on Monday, 17 August 2026 at 9:00 am. Students must carry their ID card every day.",
       kn: "1, 3 ಮತ್ತು 5ನೇ ಸೆಮಿಸ್ಟರ್ ತರಗತಿಗಳು 17 ಆಗಸ್ಟ್ 2026, ಸೋಮವಾರ ಬೆಳಿಗ್ಗೆ 9:00ಕ್ಕೆ ಆರಂಭವಾಗುತ್ತವೆ. ವಿದ್ಯಾರ್ಥಿಗಳು ಪ್ರತಿದಿನ ಗುರುತಿನ ಚೀಟಿ ತರಬೇಕು.",
-      by: principal,
+      by: officeHead,
     },
     {
       on: "2026-09-15",

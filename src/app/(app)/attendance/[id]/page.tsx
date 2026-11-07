@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { ActionForm, Field, SubmitButton } from "@/components/action-form";
 import { Badge, Card, Input, NoAccess, PageHeader } from "@/components/ui";
-import { canEditLockedAttendance } from "@/lib/auth/permissions";
+import { canEditLockedAttendance, isDepartmentFaculty } from "@/lib/auth/permissions";
 import { formatDateLong, formatDateShort, todayIn } from "@/lib/domain/dates";
 import { editableUntil, lockState, rollLabels } from "@/lib/domain/marking";
 import { getRoster, getSessionContext, sessionPermission } from "@/server/attendance-data";
@@ -19,7 +19,23 @@ export default async function MarkPage(props: PageProps<"/attendance/[id]">) {
   const id = parseId((await props.params).id);
   const s = id ? await getSessionContext(id) : null;
   if (!s) notFound();
-  if (!sessionPermission(me.actor, s)) return <NoAccess what="this class's attendance" />;
+  if (!sessionPermission(me.actor, s)) {
+    // Another teacher of the department already saved it: say who, instead of a bare "no access".
+    if (s.markedById !== null && isDepartmentFaculty(me.actor, s.classRef.departmentId)) {
+      return (
+        <>
+          <PageHeader title={`${s.subject} · ${s.className}`} subtitle={`${formatDateLong(s.date)} · ${s.startsAt}–${s.endsAt}`} back={{ href: "/today", label: "Department today" }} />
+          <Card>
+            <p className="text-sm text-slate-700">
+              {s.status === "NOT_HELD" ? "Marked as not held" : "Attendance saved"} by <span className="font-medium">{s.markedBy}</span> · {s.markedAt}.
+            </p>
+            <p className="mt-1 text-sm text-slate-500">Only they, the subject teacher ({s.assignedNames ?? "none assigned"}) or the HOD can change it.</p>
+          </Card>
+        </>
+      );
+    }
+    return <NoAccess what="this class's attendance" />;
+  }
 
   const [settings, roster] = await Promise.all([getSettings(), getRoster(s)]);
   const today = todayIn();
@@ -35,7 +51,7 @@ export default async function MarkPage(props: PageProps<"/attendance/[id]">) {
       <PageHeader title={title} subtitle={subtitle} back={{ href: "/attendance", label: "Attendance" }} />
 
       <div className="mb-4 flex flex-wrap gap-2 text-sm">
-        {s.status === "HELD" && <Badge tone="green">Entered by {s.markedBy} · {s.markedAt}</Badge>}
+        {s.status === "HELD" && <Badge tone="green">Saved by {s.markedBy} · {s.markedAt}</Badge>}
         {lock === "OPEN" && <Badge tone="blue">Editable until {formatDateShort(editableUntil(s.date, settings.attendanceLockDays))}</Badge>}
         {lock === "LOCKED" && <Badge tone={override ? "amber" : "red"}>{override ? "Edit window closed. As HOD/admin you can still change it" : "Edit window closed. Changes go to the HOD"}</Badge>}
         {!s.assignedStaffIds.includes(me.id) && <Badge tone="violet">You are marking as substitute / HOD</Badge>}

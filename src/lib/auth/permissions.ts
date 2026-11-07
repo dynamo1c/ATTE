@@ -3,12 +3,17 @@
  * Server code must call these on EVERY read and write — UI hiding is never protection.
  *
  * ADMIN          everything
- * PRINCIPAL      view everything; decides HODs' leave; publishes college updates
+ * PRINCIPAL      views everything (reports, overview, staff, messages, audit log); changes and approves nothing
  * OFFICE         college calendar, college updates, students and parent numbers college-wide; views every
- *                report; never attendance or marks
- * HOD            manage own department (courses, classes, timetables, teaching, students); decides teachers' leave
- * CLASS_TEACHER  manage own class's students and parent contacts; view its timetable
- * FACULTY        view classes they teach
+ *                report (attendance and marks too) but never changes attendance or marks
+ * HOD            manage own department (subjects, classes, timetables, teaching, students, its staff); decides
+ *                student leave (and how it counts) and teachers' leave; updates for the department
+ * CLASS_TEACHER  own class: students and parent contacts, leave / OD requests, the class's daily and weekly
+ *                attendance status, marks entry status, shortage list
+ * FACULTY        take attendance for any class of their department (substitutes); a class someone already
+ *                saved stays with them, the subject teacher and the HOD
+ *
+ * HODs and class teachers teach their own subjects too: those rights come from teaching assignments.
  */
 export type Role = "ADMIN" | "PRINCIPAL" | "HOD" | "FACULTY" | "CLASS_TEACHER" | "OFFICE";
 
@@ -56,8 +61,39 @@ export function canManageStaff(a: Actor) {
   return isAdmin(a);
 }
 
-export function canViewStaffList(a: Actor) {
-  return seesWholeCollege(a) || hodDepartmentIds(a).length > 0;
+/** Every staff member can see the staff list and profiles (name, department, roles, phone). */
+export function canViewStaffList(_a: Actor) {
+  return true;
+}
+
+/** Roles only the admin hands out; an HOD can't give or take them, or edit people who hold them. */
+export const SENIOR_ROLES: readonly Role[] = ["ADMIN", "PRINCIPAL", "OFFICE", "HOD"];
+
+/** Add a staff member: the admin (anyone), or an HOD (as faculty of their own department). */
+export function canAddStaff(a: Actor) {
+  return isAdmin(a) || hodDepartmentIds(a).length > 0;
+}
+
+/**
+ * Edit a staff member's details, reset their password, deactivate them: the admin, or the HOD of their
+ * department as long as they hold no senior role (and are not the HOD themselves).
+ */
+export function canManageStaffMember(a: Actor, target: { staffId: number; departmentId: number | null; roles: readonly Role[] }) {
+  if (isAdmin(a)) return true;
+  if (target.staffId === a.staffId || target.departmentId === null) return false;
+  return hodDepartmentIds(a).includes(target.departmentId) && !target.roles.some((r) => SENIOR_ROLES.includes(r));
+}
+
+/**
+ * Give or remove one role grant: the admin (any), or an HOD for FACULTY of their department or CLASS_TEACHER
+ * of one of its classes. `classDepartmentId` is the department of `grant.classGroupId` (looked up by the caller).
+ */
+export function canGrantRole(a: Actor, grant: Grant, classDepartmentId: number | null = null) {
+  if (isAdmin(a)) return true;
+  const depts = hodDepartmentIds(a);
+  if (grant.role === "FACULTY") return grant.departmentId !== null && depts.includes(grant.departmentId);
+  if (grant.role === "CLASS_TEACHER") return classDepartmentId !== null && depts.includes(classDepartmentId);
+  return false;
 }
 
 export function canManageDepartment(a: Actor, departmentId: number) {
@@ -83,13 +119,32 @@ export function canViewClass(a: Actor, c: ClassRef) {
 }
 
 /**
- * Who may take attendance for a class session: its assigned teacher(s), any faculty of the
- * class's department (substitute), the HOD, or the admin. Principal is view-only.
+ * Who may take attendance for a class session: its assigned teacher(s), the HOD, the admin, or any faculty
+ * of the class's department (a substitute) while nobody has saved it yet. Once saved (`markedBy` set), a
+ * substitute can't change it unless they saved it themselves. Principal and office are view-only.
  */
-export function canMarkSession(a: Actor, s: { classRef: ClassRef; assignedStaffIds: readonly number[] }) {
+export function canMarkSession(a: Actor, s: { classRef: ClassRef; assignedStaffIds: readonly number[]; markedBy?: number | null }) {
   if (isAdmin(a) || hodDepartmentIds(a).includes(s.classRef.departmentId)) return true;
   if (s.assignedStaffIds.includes(a.staffId)) return true;
-  return a.grants.some((g) => g.role === "FACULTY" && g.departmentId === s.classRef.departmentId);
+  if (s.markedBy != null) return s.markedBy === a.staffId;
+  return isDepartmentFaculty(a, s.classRef.departmentId);
+}
+
+/** Faculty (or HOD) of this department: may open its timetable and cover any untaken class. */
+export function isDepartmentFaculty(a: Actor, departmentId: number) {
+  return hodDepartmentIds(a).includes(departmentId) || a.grants.some((g) => g.role === "FACULTY" && g.departmentId === departmentId);
+}
+
+/** Departments whose "today" timetable this person can open to cover classes (all for the admin = null). */
+export function coverDepartmentIds(a: Actor): number[] | null {
+  if (isAdmin(a)) return null;
+  const ids = [...hodDepartmentIds(a), ...a.grants.filter((g) => g.role === "FACULTY" && g.departmentId !== null).map((g) => g.departmentId!)];
+  return [...new Set(ids)];
+}
+
+/** The class teacher's "My class" page (attendance status, marks entry status, shortage). Also the HOD / admin. */
+export function canViewClassStatus(a: Actor, c: ClassRef) {
+  return classTeacherClassIds(a).includes(c.id) || canManageClass(a, c) || seesWholeCollege(a);
 }
 
 /** Change attendance after the edit window without a request (HOD/admin). */
@@ -138,9 +193,18 @@ export function canViewMessages(a: Actor) {
   return seesWholeCollege(a) || hodDepartmentIds(a).length > 0 || classTeacherClassIds(a).length > 0;
 }
 
-/** Publish a college update (portal + WhatsApp to parents) for the college, a department or a class. */
+/** Open the Updates screen and publish: the office and admin (any audience) and HODs (own department). */
 export function canPublishUpdates(a: Actor) {
-  return isAdmin(a) || isPrincipal(a) || isOffice(a);
+  return isAdmin(a) || isOffice(a) || hodDepartmentIds(a).length > 0;
+}
+
+/**
+ * Publish or withdraw an update for one audience. `departmentId` is the audience's department: null for the
+ * whole college, the class's department for a class. HODs only for their own department.
+ */
+export function canPublishUpdateTo(a: Actor, departmentId: number | null) {
+  if (isAdmin(a) || isOffice(a)) return true;
+  return departmentId !== null && hodDepartmentIds(a).includes(departmentId);
 }
 
 /** Read the audit log (who changed what): admin and principal. */
@@ -164,26 +228,33 @@ export interface LeaveApplicant {
   departmentId: number | null;
   /** Holds an HOD grant (for any department). */
   isHod: boolean;
+  /** Holds a senior role (admin, principal, office, HOD): their leave needs no approval. */
+  senior: boolean;
 }
 
 /**
- * Who decides a staff member's own leave: teachers → their HOD; HODs, and anyone without a department
- * (principal, office, common-pool staff) → the principal. The admin can decide any. Never your own.
+ * Who decides a staff member's own leave:
+ *  - teachers → the HOD of their department;
+ *  - a teacher with no department (common pool) → the admin;
+ *  - HODs, office staff, the principal and the admin → nobody: it is recorded as approved straight away.
+ * The admin can decide any pending leave. Nobody decides their own. The principal decides none.
  */
-export function leaveDecidedBy(applicant: LeaveApplicant): "HOD" | "PRINCIPAL" {
-  return applicant.isHod || applicant.departmentId === null ? "PRINCIPAL" : "HOD";
+export function leaveDecidedBy(applicant: LeaveApplicant): "HOD" | "ADMIN" | "NONE" {
+  if (applicant.senior) return "NONE";
+  return applicant.departmentId === null ? "ADMIN" : "HOD";
 }
 
 export function canDecideStaffLeave(a: Actor, applicant: LeaveApplicant) {
   if (a.staffId === applicant.staffId) return false;
+  const by = leaveDecidedBy(applicant);
+  if (by === "NONE") return false;
   if (isAdmin(a)) return true;
-  if (leaveDecidedBy(applicant) === "PRINCIPAL") return isPrincipal(a);
-  return hodDepartmentIds(a).includes(applicant.departmentId!);
+  return by === "HOD" && hodDepartmentIds(a).includes(applicant.departmentId!);
 }
 
-/** Whose staff leave someone may see besides their own: everyone (principal, admin) or their departments (HOD). */
+/** Whose staff leave someone may see besides their own: everyone (principal, admin, office) or their departments (HOD). */
 export function staffLeaveScope(a: Actor): "ALL" | "DEPARTMENTS" | "OWN" {
-  if (overseesCollege(a)) return "ALL";
+  if (seesWholeCollege(a)) return "ALL";
   return hodDepartmentIds(a).length > 0 ? "DEPARTMENTS" : "OWN";
 }
 
@@ -199,6 +270,9 @@ export interface NavItem {
 
 export function navFor(a: Actor): NavItem[] {
   const items: NavItem[] = [{ href: "/", label: "Dashboard" }];
+  const cover = coverDepartmentIds(a);
+  if (cover === null || cover.length > 0) items.push({ href: "/today", label: "Department today" });
+  if (classTeacherClassIds(a).length > 0) items.push({ href: "/my-class", label: "My class" });
   const anyClass = seesWholeCollege(a) || hodDepartmentIds(a).length > 0 || classTeacherClassIds(a).length > 0 || a.teachingClassIds.length > 0;
   const marks = isAdmin(a) || hodDepartmentIds(a).length > 0 || a.teachingClassIds.length > 0 || a.grants.some((g) => g.role === "FACULTY" && g.departmentId !== null);
   if (marks) items.push({ href: "/attendance", label: "Attendance" });
@@ -212,7 +286,7 @@ export function navFor(a: Actor): NavItem[] {
   items.push({ href: "/calendar", label: "Calendar" });
   if (canPublishUpdates(a)) items.push({ href: "/updates", label: "Updates" });
   items.push({ href: "/staff-leave", label: staffLeaveScope(a) === "OWN" ? "My leave" : "Staff leave" });
-  if (canViewStaffList(a)) items.push({ href: "/staff", label: "Staff" });
+  items.push({ href: "/staff", label: "Staff" });
   if (isAdmin(a)) items.push({ href: "/admin/departments", label: "Departments" });
   if (overseesCollege(a)) items.push({ href: "/admin/settings", label: "Settings" });
   if (canViewAudit(a)) items.push({ href: "/admin/audit", label: "Audit log" });
