@@ -3,11 +3,14 @@ import Link from "next/link";
 import { getDb } from "@/db/client";
 import { Badge, Card, Empty, PageHeader, Stat, Table, Td, Th } from "@/components/ui";
 import { classTeacherClassIds, seesWholeCollege, visibleDepartmentIds } from "@/lib/auth/permissions";
-import { formatDateLong, todayIn } from "@/lib/domain/dates";
+import { formatDateLong, formatDateShort, todayIn } from "@/lib/domain/dates";
+import { formatIndianMobile } from "@/lib/domain/phone";
+import { DAY_PART, STAFF_LEAVE_TYPE, type StaffLeaveType } from "@/lib/domain/staff-leave";
 import { requireStaff } from "@/server/current";
 import { generateSessions } from "@/server/generate-sessions";
 import { markableClassIds } from "@/server/attendance-data";
-import { getCurrentTerm } from "@/server/queries";
+import { attentionFor, departmentOverview, staffOnLeaveToday } from "@/server/overview";
+import { getCurrentTerm, getSettings } from "@/server/queries";
 
 export const metadata = { title: "Dashboard · MEI Attendance" };
 
@@ -71,6 +74,14 @@ export default async function Dashboard() {
     ORDER BY cs.start_period
   `);
 
+  const teaches = me.actor.teachingClassIds.length > 0 || me.actor.grants.some((g) => g.role === "FACULTY");
+  const [attention, onLeave, departments, settings] = await Promise.all([
+    attentionFor(me.actor, currentTerm?.id ?? null),
+    staffOnLeaveToday(me.actor, today),
+    seesWholeCollege(me.actor) && currentTerm ? getSettings().then((st) => departmentOverview(currentTerm.id, today, st.attendanceMinPct)) : Promise.resolve([]),
+    getSettings(),
+  ]);
+
   return (
     <>
       <PageHeader
@@ -85,6 +96,100 @@ export default async function Dashboard() {
         <Stat label="Classes held (last 7 days)" value={counts.held_week.toLocaleString("en-IN")} />
       </dl>
 
+      <Card title="Needs your attention" className="mt-6">
+        {attention.length === 0 ? (
+          <p className="text-sm text-slate-500">Nothing waiting for you.</p>
+        ) : (
+          <ul className="divide-y divide-slate-100">
+            {attention.map((x) => (
+              <li key={x.href + x.label}>
+                <Link href={x.href} className="flex items-center justify-between gap-3 py-2 text-sm text-slate-800 hover:text-blue-800">
+                  <span>{x.label}</span>
+                  <span className="flex items-center gap-2">
+                    <Badge tone="amber">{x.count}</Badge>
+                    <span aria-hidden className="text-slate-400">→</span>
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
+
+      {onLeave.length > 0 && (
+        <Card title={`Staff on leave today (${onLeave.length})`} className="mt-6">
+          <ul className="space-y-1 text-sm">
+            {onLeave.map((l, i) => (
+              <li key={i} className="flex flex-wrap gap-x-2">
+                <span className="font-medium text-slate-900">{l.name}</span>
+                <span className="text-slate-500">
+                  {l.dept ?? "Office"} · {STAFF_LEAVE_TYPE[l.type as StaffLeaveType]}
+                  {l.part !== "FULL" ? ` · ${DAY_PART[l.part].toLowerCase()}` : l.to_date !== today ? ` · until ${formatDateShort(l.to_date)}` : ""}
+                </span>
+              </li>
+            ))}
+          </ul>
+          <Link href="/staff-leave" className="mt-3 inline-block text-sm text-blue-700 hover:underline">
+            Classes needing a substitute →
+          </Link>
+        </Card>
+      )}
+
+      {departments.length > 0 && (
+        <Card title="Departments" className="mt-6">
+          <Table>
+            <thead>
+              <tr>
+                <Th>Department</Th>
+                <Th>HOD</Th>
+                <Th className="text-right">Students</Th>
+                <Th className="text-right">Attendance</Th>
+                <Th className="text-right">Below {settings.attendanceMinPct}%</Th>
+                <Th className="text-right">Not entered</Th>
+                <Th className="text-right">Marks to publish</Th>
+                <Th className="text-right">Staff leave</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {departments.map((d) => (
+                <tr key={d.id}>
+                  <Td>
+                    <Link href="/classes" className="font-medium text-blue-700 hover:underline">
+                      {d.code}
+                    </Link>
+                    <div className="max-w-48 truncate text-xs text-slate-500">{d.name}</div>
+                  </Td>
+                  <Td>
+                    {d.hodName ?? <span className="text-slate-400">No HOD</span>}
+                    {d.hodPhone && (
+                      <div className="flex gap-2 text-xs">
+                        <a href={`tel:${d.hodPhone}`} className="text-blue-700 hover:underline">
+                          {formatIndianMobile(d.hodPhone)}
+                        </a>
+                        <a href={`https://wa.me/${d.hodPhone.replace("+", "")}`} target="_blank" rel="noreferrer" className="text-green-700 hover:underline">
+                          WhatsApp
+                        </a>
+                      </div>
+                    )}
+                  </Td>
+                  <Td className="text-right tabular-nums">{d.students.toLocaleString("en-IN")}</Td>
+                  <Td className="text-right tabular-nums">{d.attendancePct === null ? "—" : `${d.attendancePct.toFixed(1)}%`}</Td>
+                  <Td className="text-right tabular-nums">{d.belowMin ? <Badge tone="red">{d.belowMin}</Badge> : 0}</Td>
+                  <Td className="text-right tabular-nums">{d.notEntered ? <Badge tone="amber">{d.notEntered}</Badge> : 0}</Td>
+                  <Td className="text-right tabular-nums">{d.marksWaiting}</Td>
+                  <Td className="text-right tabular-nums">
+                    {d.staffOnLeaveToday ? `${d.staffOnLeaveToday} today` : "—"}
+                    {d.staffLeavePending ? <div className="text-xs text-amber-700">{d.staffLeavePending} waiting</div> : null}
+                  </Td>
+                </tr>
+              ))}
+            </tbody>
+          </Table>
+          <p className="mt-2 text-xs text-slate-500">Attendance: present or late out of classes marked this term, before leave rules. &quot;Below&quot; counts students overall, not per subject.</p>
+        </Card>
+      )}
+
+      {teaches && (
       <Card title="Your classes today" className="mt-6">
         {myToday.length === 0 ? (
           <Empty>No classes for you today.</Empty>
@@ -122,6 +227,7 @@ export default async function Dashboard() {
         )}
         <Link href="/attendance" className="mt-3 inline-block text-sm text-blue-700 hover:underline">All attendance →</Link>
       </Card>
+      )}
 
       {!currentTerm && (
         <p className="mt-6 text-sm text-amber-800">

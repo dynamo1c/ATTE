@@ -5,6 +5,7 @@
  *
  * - Consent / opt-out don't apply: the parent asked for this message themselves.
  * - Not on WhatsApp → one SMS try, also immediately.
+ * - Counts toward the monthly cap (NOTIFY_MONTHLY_LIMIT); past it the code is not sent.
  * - Never retried later (the worker never picks these rows up: they are never QUEUED).
  */
 import { eq } from "drizzle-orm";
@@ -13,7 +14,7 @@ import { notification } from "@/db/schema";
 import { CODE_TTL_MINUTES } from "@/lib/auth/otp";
 import { dedupeKey } from "@/lib/notify/rules";
 import { renderSms, renderWhatsApp, type Language, type MessageData } from "@/lib/notify/templates";
-import type { Providers } from "./providers";
+import { limitReachedError, remainingThisMonth, type Providers } from "./providers";
 
 export const MASKED_CODE = "••••••";
 
@@ -27,13 +28,16 @@ export interface CodeRecipient {
 
 export type CodeResult = { sent: true; channel: "WHATSAPP" | "SMS" } | { sent: false; reason: string };
 
-export async function sendLoginCode(db: Pick<DbOrTx, "insert" | "update">, providers: Providers, otpId: number, to: CodeRecipient, code: string): Promise<CodeResult> {
+export async function sendLoginCode(db: Pick<DbOrTx, "insert" | "update" | "execute">, providers: Providers, otpId: number, to: CodeRecipient, code: string): Promise<CodeResult> {
   const real: MessageData = { kind: "LOGIN_OTP", code, minutes: CODE_TTL_MINUTES };
   const masked: MessageData = { kind: "LOGIN_OTP", code: MASKED_CODE, minutes: CODE_TTL_MINUTES };
   const render = (channel: "WHATSAPP" | "SMS", d: MessageData) => (channel === "WHATSAPP" ? renderWhatsApp(d, to.language) : renderSms(d, to.language));
 
   const attempt = async (channel: "WHATSAPP" | "SMS", fallbackOf: number | null) => {
-    const allowed = !providers.allowedNumbers || providers.allowedNumbers.has(to.phone);
+    const inList = !providers.allowedNumbers || providers.allowedNumbers.has(to.phone);
+    const underCap = !inList || (await remainingThisMonth(db, providers)) > 0;
+    const allowed = inList && underCap;
+    const skipReason = !inList ? "Not in NOTIFY_ALLOWED_NUMBERS (test mode)" : limitReachedError(providers);
     const [row] = await db
       .insert(notification)
       .values({
@@ -47,11 +51,11 @@ export async function sendLoginCode(db: Pick<DbOrTx, "insert" | "update">, provi
         payload: { data: masked, text: render(channel, masked) },
         status: allowed ? "SENDING" : "SKIPPED",
         attempts: allowed ? 1 : 0,
-        lastError: allowed ? null : "Not in NOTIFY_ALLOWED_NUMBERS (test mode)",
+        lastError: allowed ? null : skipReason,
         fallbackOf,
       })
       .returning({ id: notification.id });
-    if (!allowed) return { row: row.id, res: { ok: false as const, permanent: true, error: "test mode" } };
+    if (!allowed) return { row: row.id, res: { ok: false as const, permanent: true, error: inList ? skipReason : "test mode" } };
 
     const provider = channel === "WHATSAPP" ? providers.whatsapp : providers.sms;
     let res: Awaited<ReturnType<typeof provider.send>>;

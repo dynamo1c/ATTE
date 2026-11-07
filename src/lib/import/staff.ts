@@ -13,7 +13,7 @@ export const STAFF_COLUMNS = [
   { key: "department", label: "Department", aliases: ["Dept"], help: "Department code: CE, CS, EE, EC, EI, ME, CG. Blank for principal / office.", example: "CS" },
   { key: "designation", label: "Designation", help: "e.g. Lecturer, Senior Lecturer, HOD.", example: "Senior Lecturer" },
   { key: "email", label: "Email", aliases: ["Email id", "E-mail"], help: "Optional.", example: "kavitha@example.com" },
-  { key: "roles", label: "Roles", aliases: ["Role"], help: "Faculty, HOD, Principal, Admin; several separated by commas. Blank = Faculty for new people.", example: "Faculty, HOD" },
+  { key: "roles", label: "Roles", aliases: ["Role"], help: "Faculty, HOD, Principal, Admin, Office; several separated by commas. Blank = Faculty for new people.", example: "Faculty, HOD" },
   { key: "classTeacher", label: "Class teacher of", aliases: ["Class teacher"], help: "Semester they are class teacher of this term, e.g. 3 (their department) or CS 3.", example: "3" },
 ] as const satisfies readonly Column[];
 
@@ -64,9 +64,11 @@ const ROLE_WORDS: Record<string, Role> = {
   principal: "PRINCIPAL",
   admin: "ADMIN",
   administrator: "ADMIN",
+  office: "OFFICE",
+  officestaff: "OFFICE",
 };
 
-export const ROLE_NAME: Record<Role, string> = { FACULTY: "Faculty", HOD: "HOD", PRINCIPAL: "Principal", ADMIN: "Admin", CLASS_TEACHER: "Class teacher" };
+export const ROLE_NAME: Record<Role, string> = { FACULTY: "Faculty", HOD: "HOD", PRINCIPAL: "Principal", ADMIN: "Admin", CLASS_TEACHER: "Class teacher", OFFICE: "Office" };
 
 export function planStaff(file: readonly ReadRow[], ctx: StaffContext): Plan<StaffOp> {
   const plan = emptyPlan<StaffOp>();

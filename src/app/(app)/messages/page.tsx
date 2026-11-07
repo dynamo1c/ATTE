@@ -4,18 +4,39 @@ import { getDb } from "@/db/client";
 import { ActionForm, Field, SubmitButton } from "@/components/action-form";
 import { MessagePreview, MessageStatus } from "@/components/messages";
 import { ExcelLink } from "@/components/report-actions";
-import { Card, Empty, Input, NoAccess, PageHeader, Select, Stat, Table, Td, Textarea, Th, buttonClass } from "@/components/ui";
-import { canBroadcast, canManageOutbox, canViewMessages, classTeacherClassIds, seesWholeCollege, visibleDepartmentIds } from "@/lib/auth/permissions";
+import { Card, Empty, Input, NoAccess, PageHeader, Select, Stat, Table, Td, Th, buttonClass } from "@/components/ui";
+import { canManageOutbox, canPublishUpdates, canViewMessages, classTeacherClassIds, seesWholeCollege, visibleDepartmentIds } from "@/lib/auth/permissions";
 import { formatIndianMobile } from "@/lib/domain/phone";
 import { TRIGGER_LABEL, type Trigger } from "@/lib/notify/rules";
 import { requireStaff } from "@/server/current";
-import { getCurrentTerm, listClasses, listDepartments } from "@/server/queries";
+import { providersFromEnv, realSentThisMonth } from "@/server/notify/providers";
+import { getCurrentTerm } from "@/server/queries";
 import { MESSAGE_STATUSES, messageFilters, messageScope, messageWhere } from "@/server/report-data";
-import { cancelMessage, retryMessage, runNow, sendBroadcast } from "./actions";
+import { cancelMessage, retryMessage, runNow, sendTestMessage } from "./actions";
 
 export const metadata = { title: "Messages · MEI Attendance" };
 
 const STATUSES = MESSAGE_STATUSES;
+const SENDER_HINT: Record<string, string> = {
+  mock: "The mock sender is on: nothing really leaves the server.",
+  whatsapp: "Must be in NOTIFY_ALLOWED_NUMBERS and verified in Meta.",
+  twilio: "Must be in NOTIFY_ALLOWED_NUMBERS and have joined the Twilio sandbox (and messaged it in the last 24 hours).",
+};
+
+/** "This month: 12 of 90 real messages" for staff who manage sending; null with the mock sender. */
+async function monthUsage(db: ReturnType<typeof getDb>): Promise<string | null> {
+  let providers;
+  try {
+    providers = providersFromEnv();
+  } catch {
+    return null;
+  }
+  if (!providers.real) return null;
+  const n = await realSentThisMonth(db);
+  return providers.monthlyLimit == null
+    ? `This month: ${n.toLocaleString("en-IN")} real messages (no monthly cap set)`
+    : `This month: ${n.toLocaleString("en-IN")} of ${providers.monthlyLimit.toLocaleString("en-IN")} real messages${n >= providers.monthlyLimit ? " — cap reached, sending stopped" : ""}`;
+}
 const PAGE = 100;
 
 type Row = {
@@ -75,8 +96,8 @@ export default async function MessagesPage(props: PageProps<"/messages">) {
   ]);
 
   const manage = canManageOutbox(me.actor);
-  const broadcast = canBroadcast(me.actor);
-  const [departments, classes] = broadcast ? await Promise.all([listDepartments(), listClasses(term.id)]) : [[], []];
+  const publish = canPublishUpdates(me.actor);
+  const usage = manage ? await monthUsage(db) : null;
   const link = (patch: Record<string, string | null>) => {
     const p = new URLSearchParams();
     const merged = { status, trigger, q: q || null, ...patch };
@@ -104,48 +125,28 @@ export default async function MessagesPage(props: PageProps<"/messages">) {
 
       <dl className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat label="Waiting to send" value={stats.queued} hint="Sent every 15 minutes, 8 am – 9 pm" />
-        <Stat label="Sent in the last 7 days" value={stats.sent_week.toLocaleString("en-IN")} />
+        <Stat label="Sent in the last 7 days" value={stats.sent_week.toLocaleString("en-IN")} hint={usage} />
         <Stat label="Failed" value={stats.failed} hint={stats.failed ? <Link href={link({ status: "FAILED" })} className="text-blue-700 hover:underline">Show them</Link> : undefined} />
         <Stat label="Students with no consented number" value={stats.no_consent} hint="Their parents get nothing" />
       </dl>
 
-      {broadcast && (
+      {manage && (
         <details className="mb-6 rounded-lg border border-slate-200 bg-white">
-          <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-slate-900">Send a notice to parents</summary>
+          <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-slate-900">Send a test WhatsApp (setup check)</summary>
           <div className="border-t border-slate-200 p-4">
-            <ActionForm action={sendBroadcast} resetOnSuccess confirm="Send this notice to every consenting parent in the group?" className="max-w-3xl space-y-3">
-              <Field label="To parents of" name="audience">
-                <Select id="audience" name="audience" defaultValue="college">
-                  <option value="college">Every student in the college</option>
-                  <optgroup label="A department">
-                    {departments.map((d) => (
-                      <option key={d.id} value={`dept:${d.id}`}>
-                        {d.code} — {d.name}
-                      </option>
-                    ))}
-                  </optgroup>
-                  <optgroup label="A class">
-                    {classes.map((c) => (
-                      <option key={c.id} value={`class:${c.id}`}>
-                        {c.departmentCode} Sem {c.semester}
-                      </option>
-                    ))}
-                  </optgroup>
-                </Select>
+            <ActionForm action={sendTestMessage} className="flex flex-wrap items-end gap-3">
+              <Field label="Your mobile number" name="phone" hint={SENDER_HINT[process.env.NOTIFY_PROVIDER ?? "mock"] ?? SENDER_HINT.mock}>
+                <Input id="phone" name="phone" inputMode="tel" placeholder="98450 12345" className="w-48" />
               </Field>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <Field label="English" name="textEn">
-                  <Textarea id="textEn" name="textEn" rows={4} maxLength={600} placeholder="The college will remain closed on 12 November for Deepavali." />
-                </Field>
-                <Field label="Kannada" name="textKn">
-                  <Textarea id="textKn" name="textKn" rows={4} maxLength={600} lang="kn" placeholder="ದೀಪಾವಳಿ ಪ್ರಯುಕ್ತ ನವೆಂಬರ್ 12 ರಂದು ಕಾಲೇಜಿಗೆ ರಜೆ ಇರುತ್ತದೆ." />
-                </Field>
-              </div>
-              <p className="text-xs text-slate-500">Each parent gets the language(s) saved for their number. Sent during the next run (8 am – 9 pm).</p>
-              <SubmitButton>Queue notice</SubmitButton>
+              <SubmitButton variant="secondary">Send test</SubmitButton>
             </ActionForm>
           </div>
         </details>
+      )}
+      {publish && (
+        <p className="mb-6 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+          Notices to parents are published as <Link href="/updates" className="font-medium underline">college updates</Link>: they go out on WhatsApp and stay on the parent portal.
+        </p>
       )}
 
       <Card

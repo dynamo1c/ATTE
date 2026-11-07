@@ -19,7 +19,7 @@ async function managedStudent(me: CurrentStaff, studentId: number) {
   const term = await getCurrentTerm();
   const s = await getStudent(studentId, term?.id ?? null);
   if (!s) throw new UserError("Student not found.");
-  ensure(canManageStudent(me.actor, s), "Only the class teacher, HOD or admin can change this student.");
+  ensure(canManageStudent(me.actor, s), "Only the class teacher, HOD, office or admin can change this student.");
   return s;
 }
 

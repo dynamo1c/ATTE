@@ -20,7 +20,10 @@ export class UserError extends Error {
 const CONSTRAINT_MESSAGES: Record<string, string> = {
   staff_phone_unique: "Another staff member already uses this phone number.",
   department_code_unique: "A department with this code already exists.",
-  course_code_unique: "A subject with this code already exists.",
+  course_dept_code: "This department already has a subject with this code.",
+  staff_leave_no_overlap: "You already have leave (waiting or approved) on some of these days. Cancel that one first.",
+  staff_leave_half_day: "A half day must be a single date.",
+  staff_leave_not_own: "You can't decide your own leave.",
   course_dept_sem_short: "This department already has a subject with this short name in that semester.",
   course_offering_course_class: "This subject is already offered to the class.",
   teaching_assignment_unique: "This teacher is already assigned to that part of the subject.",

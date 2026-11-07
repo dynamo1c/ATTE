@@ -44,12 +44,13 @@ Rule that follows: **nothing about "5 subjects", "4 internals" or "2 batches" is
 
 | Role | Scope | Can do |
 |---|---|---|
-| Admin | Whole college | Everything: setup, users, calendar, imports, message settings, audit log |
-| Principal | Whole college | View all dashboards & reports, approve escalations, broadcast notices |
-| HOD | Own department | Manage department subjects, timetables, faculty assignment; approve late edits & leaves; see compliance |
-| Faculty | Assigned subject + batch combos | Mark attendance, enter marks for their assessments, view their classes |
+| Admin | Whole college | Everything: setup, users, calendar, imports, message settings and outbox, audit log; decides anyone's leave (except their own) |
+| Principal | Whole college | View every dashboard, department and report; per-department overview with HOD contacts; decides HODs' (and office staff's) leave; publishes college updates; audit log. Changes nothing inside departments. **[OPEN]** a principal ↔ HOD messaging space, once the principal says what is needed |
+| Office | Whole college | Keeps the college calendar (holidays, exams, events; the only role besides admin that edits it); publishes college updates (WhatsApp + parent portal); edits students and parent numbers college-wide; views and downloads every report. Never attendance or marks |
+| HOD | Own department | Manage department subjects, timetables, faculty assignment; approve late edits, student leave and **teachers' own leave**; publish marks; see compliance |
+| Faculty | Assigned subject + batch combos | Mark attendance, enter marks for their assessments, view their classes; apply for own leave |
 | Class teacher | One class (dept + semester) | Everything faculty can for that class + leave/OD entry, student/parent contact edits, class reports |
-| Parent | Own child(ren) | View attendance + marks, receive WhatsApp/SMS |
+| Parent | Own child(ren) | View attendance, marks, the college calendar and college updates; receive WhatsApp/SMS |
 
 - Roles are **scoped grants** (user × role × scope). One person can be faculty for 3 subjects *and* class teacher of CS Sem 3 *and* HOD.
 - Students get no login for now (may be added later; design keeps it possible).
@@ -253,7 +254,8 @@ Details: <portal link>
 
 ### 8.4 Providers
 
-- **Demo (now, ₹0):** `MockProvider` shows messages in an in-app "phone preview" outbox. Plus **Meta WhatsApp Cloud API test number**: free, sends real WhatsApp messages to up to 5 verified numbers. Good enough to demo live.
+- **Demo (now, ₹0):** `MockProvider` shows messages in an in-app "phone preview" outbox. Plus **Twilio WhatsApp sandbox** (`NOTIFY_PROVIDER=twilio`, chosen 2026-11-07: the Meta test number stayed blocked because the Meta business account had no payment method / business verification) or the **Meta Cloud API test number**. Both send real WhatsApp only to allow-listed test numbers.
+- **Cost cap:** `NOTIFY_MONTHLY_LIMIT` = most real messages per calendar month (counted by `sent_at`, login codes included); past it, messages are SKIPPED with the reason. Twilio adds its own per-message fee (~₹0.4–0.5) on top of Meta's, so for production prefer the college's own verified Meta account (Cloud API direct) and keep Twilio for demos.
 - **Production:** Meta WhatsApp Cloud API directly (cheapest) or a BSP (Gupshup / AiSensy / Interakt / WATI: easier setup, small markup). Needs a Meta Business account verified in **the college's name**, a dedicated phone number, and approved "utility" templates. Per-message fee; verify current India rates before budgeting. Rough scale: ~1,300 students × ~1.5 numbers × weekly ≈ 8,000 messages/month + event alerts.
 - **SMS fallback:** Indian SMS needs **TRAI DLT** registration (college as entity, sender ID header, each template pre-registered). Providers: MSG91, Fast2SMS, etc. Kannada SMS is Unicode (70 chars/segment), so SMS = short text + link.
 - Code talks to an interface (`MessageProvider`); swapping providers = config change.
@@ -356,6 +358,17 @@ Alternative considered: **Django + HTMX** (Python). Equally solid, comes with a 
 Demo-ready after phases 0–4 + 6 (mock + test number).
 
 **Progress:** Phase 0 and 1 done (2026-10-31). Schema with DB-level checks, pure rule logic (attendance %, calendar, timetable, reg no, phone) with 62 unit tests, 14 database-constraint tests, deterministic dummy data seed, CI workflow, status page.
+
+**Progress:** Roles for the demo done (2026-11-03), on top of phase 10 work.
+
+- Office role (calendar, college updates, students college-wide, all reports; no attendance or marks). Calendar editing moved to office + admin only.
+- Staff leave: apply (CL / medical / EL / OD / other, full or half day, up to 30 days back and 180 ahead), HOD decides teachers', principal decides HODs' and staff without a department, admin any, never your own (also a DB check). Overlapping open leave is refused by an exclusion constraint (half days FN / AN may share a date). Waiting and upcoming approved leave list the timetable classes that need a substitute.
+- College updates: published by office / principal / admin for the college, a department or a class; saved for the parent portal and sent on WhatsApp through the outbox (dedupe per update + number); can be withdrawn from the portal. Replaces the old "send a notice" form.
+- Dashboard: "needs your attention" per role, staff on leave today, per-department overview for principal / admin / office (attendance, students below the minimum, not entered, marks to publish, staff leave, HOD phone + WhatsApp).
+- Parent portal: Updates and Calendar pages.
+- WhatsApp: clear messages for Meta's common errors (24-hour window, number not on the test list, expired token), admin "send a test WhatsApp", and real sending to every number is refused while the dummy data is loaded (`college_settings.demo_data`).
+- Subjects: one subject per (department, code), so shared courses like Maths 25SC11I exist once per department; import matches on department + code.
+- Dummy data: real C-25 subjects for CS, EC, ME, EE Sem 1/3 (docs/c25-subjects.md); CE, EI, Cloud Computing and non-CS Sem 5 stay placeholders. Office accounts, staff leave history, college updates with sent messages, demo login hints on both sign-in pages (dummy data only), `DEMO_PARENT_PHONE` to put your own number on the demo guardian.
 
 **Progress:** Phase 10 in progress (2026-11-02).
 

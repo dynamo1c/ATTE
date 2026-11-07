@@ -6,6 +6,8 @@ import { parentOtp } from "@/db/schema";
 import { CODE_TTL_MINUTES, maskPhone, MAX_CODE_TRIES, sha256 } from "@/lib/auth/otp";
 import { startOverAction } from "@/server/parent-actions";
 import { CHALLENGE_COOKIE, DEMO_COOKIE, getCurrentParent } from "@/server/parent-session";
+import { DemoFill } from "@/components/demo-fill";
+import { demoParentLogin } from "@/server/demo";
 import { RequestCodeForm, VerifyCodeForm } from "./forms";
 
 export const metadata = { title: "Parent sign in · MEI Polytechnic" };
@@ -23,6 +25,7 @@ export default async function ParentLoginPage() {
         .limit(1)
     : [];
   const demoCode = pending ? jar.get(DEMO_COOKIE)?.value : undefined;
+  const demoParent = pending ? null : await demoParentLogin();
 
   return (
     <div className="mx-auto max-w-sm">
@@ -52,6 +55,13 @@ export default async function ParentLoginPage() {
           <RequestCodeForm />
         )}
       </div>
+      {demoParent && (
+        <DemoFill
+          title="Demo parent (dummy data)"
+          note="One guardian number linked to two children. Tap to fill; the code shows on screen."
+          rows={demoParent.regNos.map((r) => ({ label: r, detail: demoParent.phone, values: { regNo: r, phone: demoParent.phone } }))}
+        />
+      )}
       <p className="mt-4 text-center text-xs text-slate-500">
         Only numbers registered with the college can sign in. To add or change your number, contact the class teacher.
       </p>

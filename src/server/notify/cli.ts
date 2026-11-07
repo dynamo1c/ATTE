@@ -8,7 +8,7 @@
 import "dotenv/config";
 import { createDb, createPool } from "@/db/client";
 import { purgeAuth } from "../auth-cleanup";
-import { providersFromEnv } from "./providers";
+import { providersFor } from "./providers";
 import { runScan } from "./scan";
 import { processOutbox } from "./worker";
 
@@ -27,7 +27,7 @@ async function main() {
       console.log(`Scan: ${r.students} students checked${r.week ? `, weekly summary for ${r.week.from}–${r.week.to}` : ""}. Queued: ${queued}.`);
     }
     if (send) {
-      const providers = providersFromEnv();
+      const providers = await providersFor(db);
       let total = { sent: 0, failed: 0, retrying: 0, skipped: 0, fallbacks: 0 };
       // Drain in batches so one run clears a weekly-summary burst.
       for (let i = 0; i < 50; i++) {

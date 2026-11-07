@@ -130,7 +130,13 @@ describe("planSubjects", () => {
     const text = messages(plan.errors);
     expect(text).toContain("20CS31P already exists with a different type");
     expect(text).toContain("CS Sem 3 already has a subject called DSP");
-    expect(text).toContain("Subject code M1 is also on row 4");
+    expect(text).toContain("Subject ME M1 is also on row 4");
+  });
+
+  it("allows the same official code once per department (shared subjects like Maths)", () => {
+    const plan = planSubjects(sheet(head, ["CS", "3", "25SC11I", "MATHS", "Engineering Mathematics-I", "Integrated", "Theory"], ["ME", "3", "25SC11I", "MATHS", "Engineering Mathematics-I", "Integrated", "Theory"]), ctx);
+    expect(plan.errors).toEqual([]);
+    expect(plan.ops.map((o) => o.kind)).toEqual(["create", "create"]);
   });
 });
 

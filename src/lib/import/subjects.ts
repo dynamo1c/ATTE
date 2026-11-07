@@ -1,5 +1,6 @@
 /**
- * Subject import: one row per subject, matched by subject code. New subjects are created and given to
+ * Subject import: one row per subject, matched by department + subject code (a shared subject such as
+ * Maths 25SC11I has the same code in every department, one subject per department). New subjects are created and given to
  * this term's class of that department and semester. For an existing subject only the names can change
  * here; department, semester, type and marks scheme are protected by the rules on the subject page.
  */
@@ -10,7 +11,7 @@ import { changeLine, choice, duplicates, emptyPlan, headingKey, readColumns, Row
 export const SUBJECT_COLUMNS = [
   { key: "department", label: "Department", aliases: ["Dept"], required: true, help: "Department code: CE, CS, EE, EC, EI, ME, CG.", example: "CS" },
   { key: "semester", label: "Semester", aliases: ["Sem"], required: true, help: "1 to 6.", example: "3" },
-  { key: "code", label: "Subject code", aliases: ["Code", "Course code"], required: true, help: "Official code from the curriculum; must be unique.", example: "20CS31P" },
+  { key: "code", label: "Subject code", aliases: ["Code", "Course code"], required: true, help: "Official code from the curriculum. Shared subjects (Maths) use the same code in each department.", example: "25CS31I" },
   { key: "shortName", label: "Short name", aliases: ["Short", "Abbreviation"], required: true, help: "As on the timetable, e.g. DSP. Unique within the semester.", example: "DSP" },
   { key: "name", label: "Full name", aliases: ["Subject name", "Name", "Subject"], required: true, help: "Full subject name.", example: "Data Structures with Python" },
   { key: "kind", label: "Type", aliases: ["Kind", "Subject type"], required: true, help: "Integrated (theory + lab), Theory only, Practical only, or Specialization.", example: "Integrated" },
@@ -78,7 +79,7 @@ export function planSubjects(file: readonly ReadRow[], ctx: SubjectContext): Pla
   const deptByCode = new Map(ctx.departments.map((d) => [d.code, d.id]));
   const deptCode = new Map(ctx.departments.map((d) => [d.id, d.code]));
   const schemeName = new Map(ctx.schemes.map((s) => [s.id, s.name]));
-  const byCode = new Map(ctx.courses.map((c) => [c.code, c]));
+  const byCode = new Map(ctx.courses.map((c) => [`${c.departmentId}|${c.code}`, c]));
   const codes: { line: number; key: string | undefined }[] = [];
   const shorts: { line: number; key: string | undefined }[] = [];
 
@@ -100,7 +101,7 @@ export function planSubjects(file: readonly ReadRow[], ctx: SubjectContext): Pla
       else if (!s) r.errors.push(`Marks scheme “${row.get("scheme")}” not found. Schemes: ${ctx.schemes.map((x) => x.name).join("; ")}.`);
       else schemeId = s.id;
     }
-    codes.push({ line: row.line, key: code ?? undefined });
+    codes.push({ line: row.line, key: departmentId && code ? `${deptRaw} ${code}` : undefined });
     shorts.push({ line: row.line, key: departmentId && semester && shortName ? `${departmentId}|${semester}|${shortName.toUpperCase()}` : undefined });
 
     if (r.errors.length || !departmentId || !semester || !code || !shortName || !name || !kind || !schemeId) {
@@ -111,13 +112,13 @@ export function planSubjects(file: readonly ReadRow[], ctx: SubjectContext): Pla
     const cls = ctx.classes.find((c) => c.departmentId === departmentId && c.semester === semester);
     const where = `${deptRaw} Sem ${semester}`;
     // Short names must stay unique per department + semester among subjects not in this file's rows.
-    const clash = ctx.courses.find((c) => c.code !== code && c.departmentId === departmentId && c.semester === semester && c.shortName.toUpperCase() === shortName.toUpperCase());
+    const clash = ctx.courses.find((c) => !(c.code === code && c.departmentId === departmentId) && c.departmentId === departmentId && c.semester === semester && c.shortName.toUpperCase() === shortName.toUpperCase());
     if (clash) {
       plan.errors.push({ line: row.line, message: `${where} already has a subject called ${shortName} (code ${clash.code}).` });
       continue;
     }
 
-    const existing = byCode.get(code);
+    const existing = byCode.get(`${departmentId}|${code}`);
     if (!existing) {
       plan.ops.push({ kind: "create", line: row.line, values, offerTo: cls?.id ?? null });
       plan.items.push({ line: row.line, action: "create", label: `${code} ${shortName}`, changes: [`${where}, ${KIND_NAME[kind]}, ${schemeName.get(schemeId)}`, cls ? `Given to ${where} this term` : `No ${where} class this term`] });
@@ -125,11 +126,11 @@ export function planSubjects(file: readonly ReadRow[], ctx: SubjectContext): Pla
     }
 
     const locked: string[] = [];
-    if (existing.departmentId !== departmentId || existing.semester !== semester) locked.push(`department/semester (saved: ${deptCode.get(existing.departmentId)} Sem ${existing.semester})`);
+    if (existing.semester !== semester) locked.push(`semester (saved: Sem ${existing.semester})`);
     if (existing.kind !== kind) locked.push(`type (saved: ${KIND_NAME[existing.kind]})`);
     if (existing.schemeId !== schemeId) locked.push(`marks scheme (saved: ${schemeName.get(existing.schemeId)})`);
     if (locked.length) {
-      plan.errors.push({ line: row.line, message: `${code} already exists with a different ${locked.join(", ")}. Change those on the subject's page, or fix the file.` });
+      plan.errors.push({ line: row.line, message: `${deptRaw} ${code} already exists with a different ${locked.join(", ")}. Change those on the subject's page, or fix the file.` });
       continue;
     }
     const set: Partial<CourseValues> = {};
@@ -152,7 +153,7 @@ export function planSubjects(file: readonly ReadRow[], ctx: SubjectContext): Pla
     plan.items.push({ line: row.line, action, label: `${code} ${shortName}`, changes });
   }
 
-  plan.errors.push(...duplicates(codes, (c) => `Subject code ${c}`));
+  plan.errors.push(...duplicates(codes, (c) => `Subject ${c}`));
   plan.errors.push(...duplicates(shorts, (k) => `Short name ${k.split("|")[2]} in ${deptCode.get(Number(k.split("|")[0]))} Sem ${k.split("|")[1]}`));
   return plan;
 }

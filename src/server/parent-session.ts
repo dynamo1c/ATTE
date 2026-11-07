@@ -63,6 +63,8 @@ export interface Child {
   status: string;
   /** Current class this term, if any. */
   classId: number | null;
+  /** Department of that class. */
+  departmentId: number | null;
   className: string | null;
 }
 
@@ -87,6 +89,7 @@ export const getCurrentParent = cache(async (): Promise<CurrentParent | null> =>
       regNo: student.regNo,
       status: student.status,
       classId: classGroup.id,
+      departmentId: classGroup.departmentId,
       deptCode: department.code,
       semester: classGroup.semester,
     })
@@ -102,7 +105,7 @@ export const getCurrentParent = cache(async (): Promise<CurrentParent | null> =>
     .orderBy(asc(student.name));
   return {
     phone,
-    children: rows.map((r) => ({ id: r.id, name: r.name, regNo: r.regNo, status: r.status, classId: r.classId, className: r.deptCode ? `${r.deptCode} Sem ${r.semester}` : null })),
+    children: rows.map((r) => ({ id: r.id, name: r.name, regNo: r.regNo, status: r.status, classId: r.classId, departmentId: r.departmentId, className: r.deptCode ? `${r.deptCode} Sem ${r.semester}` : null })),
   };
 });
 

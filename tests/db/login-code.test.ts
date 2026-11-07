@@ -46,7 +46,7 @@ describe("parent login code", () => {
       const to = { contactId: contact.id, studentId: contact.student_id, phone: contact.phone, language: "BOTH" as const, whatsappOk: true };
 
       const p = new Recording();
-      const providers: Providers = { whatsapp: p, sms: p, allowedNumbers: null };
+      const providers: Providers = { whatsapp: p, sms: p, allowedNumbers: null, real: false };
       expect(await sendLoginCode(tx, providers, 900001, to, "042913")).toEqual({ sent: true, channel: "WHATSAPP" });
       expect(p.sent[0].text).toContain("042913");
       const stored = await tx.execute<{ text: string; data: string; status: string }>(sql`SELECT payload->>'text' AS text, payload::text AS data, status::text FROM notification WHERE dedupe_key = 'OTP:900001'`);
@@ -56,20 +56,20 @@ describe("parent login code", () => {
 
       // Not on WhatsApp → SMS straight away.
       const f = new Recording(new Set([contact.phone]));
-      expect(await sendLoginCode(tx, { whatsapp: f, sms: f, allowedNumbers: null }, 900002, to, "111222")).toEqual({ sent: true, channel: "SMS" });
+      expect(await sendLoginCode(tx, { whatsapp: f, sms: f, allowedNumbers: null, real: false }, 900002, to, "111222")).toEqual({ sent: true, channel: "SMS" });
       expect(f.sent.map((m) => m.channel)).toEqual(["WHATSAPP", "SMS"]);
       expect(f.sent[1].text).toContain("111222");
 
       // Test mode: a number outside the allowed list is skipped, nothing sent.
       const s = new Recording();
-      expect((await sendLoginCode(tx, { whatsapp: s, sms: s, allowedNumbers: new Set(["+919999999999"]) }, 900003, to, "333444")).sent).toBe(false);
+      expect((await sendLoginCode(tx, { whatsapp: s, sms: s, allowedNumbers: new Set(["+919999999999"]), real: false }, 900003, to, "333444")).sent).toBe(false);
       expect(s.sent).toHaveLength(0);
 
       // A code interrupted mid-send is failed, not queued again with the masked text.
       await tx.execute(sql`UPDATE notification SET status = 'SENDING', updated_at = now() - interval '1 hour' WHERE dedupe_key = 'OTP:900001'`);
       await tx.execute(sql`UPDATE notification SET status = 'SKIPPED' WHERE status = 'QUEUED'`);
       const w = new Recording();
-      await processOutbox(tx, { whatsapp: w, sms: w, allowedNumbers: null });
+      await processOutbox(tx, { whatsapp: w, sms: w, allowedNumbers: null, real: false });
       expect(w.sent).toHaveLength(0);
       const after = await tx.execute<{ status: string }>(sql`SELECT status::text FROM notification WHERE dedupe_key = 'OTP:900001'`);
       expect(after.rows[0].status).toBe("FAILED");

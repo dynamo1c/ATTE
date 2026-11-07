@@ -213,6 +213,8 @@ export const dedupeKey = {
   day: (studentId: number, date: IsoDate, contactId: number) => `DAY:${studentId}:${date}:${contactId}`,
   leave: (leaveId: number, contactId: number) => `LEAVE:${leaveId}:${contactId}`,
   broadcast: (broadcastId: string, contactId: number) => `BROADCAST:${broadcastId}:${contactId}`,
+  /** College update (notice) from the Updates page. */
+  update: (updateId: number, contactId: number) => `UPDATE:${updateId}:${contactId}`,
   /** One marks message per test per student per number: reopening and re-publishing does not resend. */
   marks: (assessmentId: number, studentId: number, contactId: number) => `MARKS:${assessmentId}:${studentId}:${contactId}`,
   loginCode: (otpId: number) => `OTP:${otpId}`,

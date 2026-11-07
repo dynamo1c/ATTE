@@ -6,7 +6,7 @@ Full design, rules and open questions: **[docs/PLAN.md](docs/PLAN.md)**. Read it
 
 ## Status
 
-Prototype with dummy data. Phases 0–9 done: database, rule logic with tests, dummy data, staff sign-in with roles, setup screens (staff, classes, subjects, teachers, timetables, calendar, students and parent numbers, settings), and attendance: live or from the book, late-change requests with HOD approval, leave/OD notices; attendance % per student and subject, class sheets, shortage lists and the "not yet entered" report; messages to parents (weekly summary, shortage / warning / absence alerts, notices) in English + Kannada through an outbox, with a mock sender and the WhatsApp Cloud API. marks: entry per test (theory, practical, activity, final exam), teacher → HOD → published, internal /50 + final /50 = /100 with the college's formula, low-marks report and parent messages; a parent portal (register number + phone on record + one-time code) showing attendance and published marks for every child linked to the number; Excel downloads (shortage list, class attendance + exam eligibility, monthly register, class marks, classes not entered, message delivery) and print / save-as-PDF for every report plus a student report card; hardening: audit log screen, backups with a restore check, health check, security headers, error pages, load test; installs on phones (app icon, full screen). In progress: Excel / CSV import of real staff, subjects, students and timetables (checks done and tested, upload screen not yet).
+Prototype with dummy data. Phases 0–9 done: database, rule logic with tests, dummy data, staff sign-in with roles, setup screens (staff, classes, subjects, teachers, timetables, calendar, students and parent numbers, settings), and attendance: live or from the book, late-change requests with HOD approval, leave/OD notices; attendance % per student and subject, class sheets, shortage lists and the "not yet entered" report; messages to parents (weekly summary, shortage / warning / absence alerts, notices) in English + Kannada through an outbox, with a mock sender and the WhatsApp Cloud API. marks: entry per test (theory, practical, activity, final exam), teacher → HOD → published, internal /50 + final /50 = /100 with the college's formula, low-marks report and parent messages; a parent portal (register number + phone on record + one-time code) showing attendance and published marks for every child linked to the number; Excel downloads (shortage list, class attendance + exam eligibility, monthly register, class marks, classes not entered, message delivery) and print / save-as-PDF for every report plus a student report card; hardening: audit log screen, backups with a restore check, health check, security headers, error pages, load test; installs on phones (app icon, full screen); roles for the demo: office staff (calendar, college updates, students), staff leave decided by the HOD / principal with the classes that need a substitute, college updates on WhatsApp and in the parent portal (with the college calendar), a per-department overview for the principal. In progress: Excel / CSV import of real staff, subjects, students and timetables (checks done and tested, upload screen not yet).
 
 ## Demo sign-in (dummy data only)
 
@@ -16,12 +16,26 @@ Password for every dummy staff account: the `SEED_STAFF_PASSWORD` value in `.env
 |---|---|
 | Admin | 70000 00001 |
 | Principal | 70000 00002 |
-| HOD, CS | 70000 00010 |
-| Class teacher CS Sem 3 (+ faculty) | 70000 00012 |
-| Faculty, CS | 70000 00059 |
-| Faculty, Maths (common pool) | 70000 00052 |
+| Office | 70000 00003 |
+| HOD, CS | 70000 00012 |
+| Class teacher CS Sem 3 (+ faculty) | 70000 00014 |
+| Faculty, CS | 70000 00061 |
+| Faculty, Maths (common pool) | 70000 00054 |
 
-**Parent portal** (`/parent`): mobile `90000 00001` with register number `204CS25001` or `204CS26001` (two siblings). With the mock sender (`NOTIFY_PROVIDER=mock`) nothing is really sent, so the code is shown on screen in development, or in a production build when `PARENT_OTP_DEMO=yes`.
+While the dummy data is loaded, both sign-in pages list these: tap a role to fill the form.
+
+**Parent portal** (`/parent`): mobile `90000 00001` (or your `DEMO_PARENT_PHONE`) with register number `204CS25001` or `204CS26001` (two siblings).
+
+## Who does what
+
+| Role | Can do |
+|---|---|
+| Admin | Everything; staff accounts and roles, settings, message queue, audit log |
+| Principal | Sees every department: dashboard overview per department (attendance, shortage, not entered, marks waiting, staff leave, HOD phone / WhatsApp); decides HODs' leave; publishes college updates |
+| Office | College calendar (holidays, exams, events), college updates (WhatsApp + parent portal), student and parent-number edits for any class, every report. No attendance or marks |
+| HOD | Own department: timetable, subjects, teachers, students; approves attendance changes, student leave, teachers' leave (sees which classes need a substitute); publishes marks |
+| Teacher (faculty / class teacher) | Attendance, marks, student leave for their class, own leave |
+| Parent | Child's attendance, marks, college calendar and updates, after register number + mobile + one-time code | With the mock sender (`NOTIFY_PROVIDER=mock`) nothing is really sent, so the code is shown on screen in development, or in a production build when `PARENT_OTP_DEMO=yes`.
 
 ## Run it locally
 
@@ -34,6 +48,52 @@ npm run db:up        # start PostgreSQL in Docker (port 5433)
 npm run db:reset     # create tables + load dummy data (~40 s)
 npm run dev          # open http://localhost:3000
 ```
+
+### WhatsApp on your own phone (demo)
+
+Real WhatsApp messages, only to your own number. The 1,263 dummy parents are skipped. Two ways:
+
+**A. Twilio sandbox (easiest: no Meta business account).** A Twilio trial has a small number of free messages, so set a cap.
+
+1. Sign up at twilio.com (free trial). **Messaging → Try it out → Send a WhatsApp message**: send the "join …" code from your WhatsApp to the sandbox number.
+2. In `.env`:
+
+   ```
+   NOTIFY_PROVIDER=twilio
+   TWILIO_ACCOUNT_SID=<Account SID, starts with AC>
+   TWILIO_AUTH_TOKEN=<Auth Token>
+   TWILIO_WHATSAPP_FROM=<sandbox number, e.g. +14155238886>
+   NOTIFY_ALLOWED_NUMBERS=+91<your number>
+   NOTIFY_MONTHLY_LIMIT=90
+   DEMO_PARENT_PHONE=<your number>
+   ```
+
+   Then `npm run db:reset` (puts your number on the demo guardian) and restart the app.
+3. Plain messages only reach you within 24 hours of your last message to the sandbox number, and the sandbox join expires after a few days of silence: message the sandbox number (send the join code again if asked) before each demo.
+4. Continue at step 5 below. Delivery problems found after Twilio accepts a message show only in the Twilio console (**Monitor → Logs → Messaging**).
+
+**B. Meta Cloud API test number.** Needs a Meta business account that Meta allows to send (payment method, complete business info; the Messages screen says if Meta blocks it).
+
+1. On developers.facebook.com: **My Apps → Create app** (type Business), then add **WhatsApp**. Under **WhatsApp → API Setup** you get a test sender number, its **Phone number ID** and a temporary **access token** (valid 24 hours; make a permanent one later with a system user in Business settings).
+2. In the **To** box there, add your own mobile and verify it with the code Meta sends.
+3. In `.env`:
+
+   ```
+   NOTIFY_PROVIDER=whatsapp
+   WHATSAPP_TOKEN=<access token>
+   WHATSAPP_PHONE_NUMBER_ID=<phone number id>
+   NOTIFY_ALLOWED_NUMBERS=+91<your number>
+   DEMO_PARENT_PHONE=<your number>
+   ```
+
+   Then `npm run db:reset` (puts your number on the demo guardian) and restart the app.
+4. From your WhatsApp, send **hi** to the test number. Meta only delivers plain messages within 24 hours of your last message to it; say hi again before each demo day.
+5. Sign in as admin → **Messages → Send a test WhatsApp**. It should arrive in a few seconds; if not, the screen says why (token expired, number not verified, 24-hour window).
+6. Demo: sign in as office → **Updates**, publish one for CS Sem 3 (or the whole college), then admin → Messages → **Check & send now** (or wait for the 15-minute job). Your phone gets it, and it shows on the parent portal's Updates page. Parent sign-in codes for your number also arrive on WhatsApp.
+
+**Cost cap:** `NOTIFY_MONTHLY_LIMIT` stops real sending once that many messages went out this month (login codes included); the rest are marked skipped with the reason, and the Messages screen shows "This month: N of LIMIT".
+
+Sending to every number (`NOTIFY_ALLOW_ALL=yes`) is refused while the dummy data is loaded: its parent numbers are made up and could belong to real people. Nothing is sent 9 pm – 8 am (updates wait until 8 am); the test message and login codes are not delayed.
 
 ### Demo on a laptop, shown on a phone
 
@@ -105,6 +165,8 @@ Classes are created from the timetable + calendar. Pages create them on demand, 
 Messages are rows in the `notification` table (the outbox), written in the same transaction as whatever caused them. `npm run notify:run` finds due alerts and sends what is queued. Schedule it **every 15 minutes**, like the nightly job. It is safe to run any number of times: each message has a dedupe key.
 
 - `NOTIFY_PROVIDER=mock` (default): nothing leaves the server. Messages show as "sent" on the Messages screen, with a preview.
+- `NOTIFY_PROVIDER=twilio`: WhatsApp through Twilio (`TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_WHATSAPP_FROM`), same `NOTIFY_ALLOWED_NUMBERS` rule. Twilio adds its own fee per message on top of Meta's.
+- `NOTIFY_MONTHLY_LIMIT`: most real messages per month (cost cap). Empty = no cap.
 - `NOTIFY_PROVIDER=whatsapp`: Meta WhatsApp Cloud API. Set `WHATSAPP_TOKEN` and `WHATSAPP_PHONE_NUMBER_ID`, and **`NOTIFY_ALLOWED_NUMBERS`** (your own test numbers). The app refuses to start sending to everyone unless `NOTIFY_ALLOW_ALL=yes`. Plain-text messages only reach a parent who messaged the college number in the last 24 hours. Real use needs Meta-approved templates (docs/PLAN.md §8.4).
 - Delivery receipts: point the Meta webhook at `/api/whatsapp/webhook` with `WHATSAPP_VERIFY_TOKEN` and `WHATSAPP_APP_SECRET` set.
 - SMS fallback needs a DLT-registered SMS provider (not added yet). Until then SMS rows fail with "No SMS provider is configured".
@@ -149,7 +211,8 @@ tests/db/                 Tests proving the database rejects bad data
 ## Dummy data
 
 - 7 departments × Sem 1/3/5 × 60 students, register numbers like `204CS25012`.
-- CS timetables transcribed from the official odd-semester 2026-27 timetable. Other departments reuse the same grids with **placeholder subjects**.
+- Subjects: real C-25 subjects and codes for CS, EC, ME and EE Sem 1 and 3 ([docs/c25-subjects.md](docs/c25-subjects.md)); CE, EI, Cloud Computing and Sem 5 outside CS are **placeholders**. CS timetables are the official odd-semester 2026-27 ones; other departments reuse the same grids.
+- Staff leave (approved, rejected, cancelled, today, waiting for the CS HOD and the principal) and college updates with their WhatsApp messages ("sent" by the mock).
 - Attendance from 17 Aug 2026 to today; last two days partly unmarked to show "pending".
 - One demo guardian number (90000 00001) linked to two siblings, for the parent portal.
 - Marks: tests 1 published, tests 2 mostly published (CS Sem 3 waiting for the HOD), activity not entered yet. **CS Sem 1 is complete, including dummy final exam marks**, to show totals out of 100.

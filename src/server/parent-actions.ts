@@ -10,7 +10,7 @@ import type { ActionState } from "@/lib/action-state";
 import { cleanCode, cleanRegNo, CODE_TTL_MINUTES, codeHash, MAX_CODE_TRIES, newCode, newToken, PHONE_WINDOW_MINUTES, requestBlock, sameHash, sha256 } from "@/lib/auth/otp";
 import { normalizeIndianMobile } from "@/lib/domain/phone";
 import { sendLoginCode } from "./notify/login-code";
-import { providersFromEnv } from "./notify/providers";
+import { providersFor } from "./notify/providers";
 import { toActionError } from "./action";
 import { audit } from "./audit";
 import { CHALLENGE_COOKIE, cookieBase, createParentSession, DEMO_COOKIE, destroyParentSession, PARENT_PATH, requireParent, VISIBLE_STATUSES } from "./parent-session";
@@ -89,7 +89,7 @@ export async function requestCodeAction(_prev: ActionState, fd: FormData): Promi
     if (created.match) {
       let result: Awaited<ReturnType<typeof sendLoginCode>>;
       try {
-        result = await sendLoginCode(db, providersFromEnv(), created.otpId, created.match, code);
+        result = await sendLoginCode(db, await providersFor(db), created.otpId, created.match, code);
       } catch (e) {
         console.error("Login code not sent", e);
         result = { sent: false, reason: "provider error" };

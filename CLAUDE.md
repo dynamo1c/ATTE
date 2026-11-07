@@ -39,9 +39,17 @@ Next 16 specifics: `PageProps<"/route">`, `RouteContext<"/route">`, `LayoutProps
 - `fieldClass` in `src/components/ui.tsx`: a caller's `w-*` / `py-*` replaces the default width / padding.
 - Schema changes: edit `src/db/schema.ts`, `npm run db:generate`, never edit an applied migration.
 
-## Current status (2026-11-02)
+## Current status (2026-11-03)
 
-Phases 0–9 done. **Phase 10 (real data import) in progress:**
+Phases 0–9 done. **Roles for the demo done** (PLAN.md §3 and the 2026-11-03 progress note): office role,
+staff leave (`staff_leave`, HOD / principal decide, overlap refused by an exclusion constraint in migration
+0008), college updates (`college_update`, outbox + parent portal), dashboard attention list and department
+overview (`src/server/overview.ts`), parent Updates / Calendar pages, WhatsApp setup check and the
+dummy-data send guard (`providersFor`, `college_settings.demo_data`; always use it, not providersFromEnv).
+Courses are unique per (department, code). Seed has C-25 subjects (docs/c25-subjects.md).
+Next the owner may ask for: principal ↔ HOD messaging (waiting on what the principal needs).
+
+**Phase 10 (real data import) in progress:**
 
 - Done: `src/lib/sheet-read.ts` (xlsx/csv reader), `src/lib/import/` (column matching + checks for staff,
   subjects, students + parents, timetable; all tested), `src/server/import/` (context loaders, apply,
@@ -52,7 +60,7 @@ Phases 0–9 done. **Phase 10 (real data import) in progress:**
   import, temp passwords shown once) and the "Import" nav item (removed until the screen exists);
   `db:setup` script for a fresh real database (settings, periods, term + classes, departments, marks
   schemes, first admin) — the app has no screen to create terms or classes; guard so
-  `NOTIFY_ALLOW_ALL=yes` is refused while demo data is loaded; DB tests for apply; docs.
+  DB tests for apply; docs. `db:setup` must leave `demo_data` false.
 - Phone: web app manifest + icons (installable). Demos run on a laptop over Wi-Fi / hotspot (README).
 
 Open questions for the college are marked **[OPEN]** in PLAN.md (minor-subject result out of 50 or 100;

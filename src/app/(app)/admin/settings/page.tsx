@@ -2,7 +2,7 @@ import { getDb } from "@/db/client";
 import { collegeSettings, leavePolicy } from "@/db/schema";
 import { ActionForm, Field, SubmitButton } from "@/components/action-form";
 import { Card, Input, NoAccess, PageHeader, Select } from "@/components/ui";
-import { canManageSettings, seesWholeCollege } from "@/lib/auth/permissions";
+import { canManageSettings, overseesCollege } from "@/lib/auth/permissions";
 import { requireStaff } from "@/server/current";
 import { CONFIGURABLE_TRIGGERS, TRIGGER_LABEL } from "@/lib/notify/rules";
 import { loadTriggerSettings } from "@/server/notify/outbox";
@@ -25,7 +25,7 @@ const COUNTS_LABEL = { PRESENT: "Counts as present", EXCUSED: "Excused (not coun
 
 export default async function SettingsPage() {
   const me = await requireStaff();
-  if (!seesWholeCollege(me.actor)) return <NoAccess what="settings" />;
+  if (!overseesCollege(me.actor)) return <NoAccess what="settings" />;
   const canEdit = canManageSettings(me.actor);
   const db = getDb();
   const [[s], policies] = await Promise.all([db.select().from(collegeSettings), db.select().from(leavePolicy)]);

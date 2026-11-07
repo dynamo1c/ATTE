@@ -28,6 +28,19 @@ export default async function ParentLayout({ children }: LayoutProps<"/parent">)
             </div>
           )}
         </div>
+        {me && me.children.length > 0 && (
+          <nav className="no-print mx-auto flex max-w-4xl gap-1 overflow-x-auto px-2 pb-2 text-sm">
+            <Link href="/parent" className="rounded-md px-3 py-1.5 text-slate-700 hover:bg-slate-100">
+              {me.children.length > 1 ? "Children" : "My child"}
+            </Link>
+            <Link href="/parent/updates" className="rounded-md px-3 py-1.5 text-slate-700 hover:bg-slate-100">
+              Updates<span className="hidden sm:inline"> · ಪ್ರಕಟಣೆಗಳು</span>
+            </Link>
+            <Link href="/parent/calendar" className="rounded-md px-3 py-1.5 text-slate-700 hover:bg-slate-100">
+              Calendar<span className="hidden sm:inline"> · ಕ್ಯಾಲೆಂಡರ್</span>
+            </Link>
+          </nav>
+        )}
       </header>
       <main className="mx-auto max-w-4xl px-4 py-6">{children}</main>
     </div>

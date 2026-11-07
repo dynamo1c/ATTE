@@ -34,7 +34,7 @@ import {
 // ---------------------------------------------------------------------------
 
 export const termKind = pgEnum("term_kind", ["ODD", "EVEN"]);
-export const roleKind = pgEnum("role_kind", ["ADMIN", "PRINCIPAL", "HOD", "FACULTY", "CLASS_TEACHER"]);
+export const roleKind = pgEnum("role_kind", ["ADMIN", "PRINCIPAL", "HOD", "FACULTY", "CLASS_TEACHER", "OFFICE"]);
 export const studentStatus = pgEnum("student_status", ["ACTIVE", "DETAINED", "DROPPED", "ALUMNI"]);
 export const gender = pgEnum("gender", ["MALE", "FEMALE", "OTHER"]);
 export const batch = pgEnum("batch", ["B1", "B2"]);
@@ -54,6 +54,10 @@ export const leaveStatus = pgEnum("leave_status", ["PENDING", "APPROVED", "REJEC
 export const leaveCountsAs = pgEnum("leave_counts_as", ["PRESENT", "EXCUSED", "ABSENT"]);
 export const assessmentStatus = pgEnum("assessment_status", ["DRAFT", "SUBMITTED", "PUBLISHED"]);
 export const markFlag = pgEnum("mark_flag", ["AB", "MP"]);
+export const staffLeaveType = pgEnum("staff_leave_type", ["CASUAL", "MEDICAL", "EARNED", "ON_DUTY", "OTHER"]);
+export const staffLeaveStatus = pgEnum("staff_leave_status", ["PENDING", "APPROVED", "REJECTED", "CANCELLED"]);
+/** Whole day, forenoon (morning periods) or afternoon. */
+export const dayPart = pgEnum("day_part", ["FULL", "FN", "AN"]);
 export const notificationTrigger = pgEnum("notification_trigger", [
   "WEEKLY_SUMMARY",
   "ATTENDANCE_WARNING",
@@ -106,6 +110,8 @@ export const collegeSettings = pgTable(
     lowMarksPct: numeric("low_marks_pct", { precision: 5, scale: 2, mode: "number" }).notNull().default(40),
     /** Whether activity periods generate attendance sessions. */
     trackActivityPeriods: boolean("track_activity_periods").notNull().default(false),
+    /** Set by the dummy-data seed. Real messages to every parent are refused while it is true. */
+    demoData: boolean("demo_data").notNull().default(false),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
@@ -219,7 +225,7 @@ export const staff = pgTable(
 
 /**
  * Scoped role grants. One person can hold several (faculty + class teacher + HOD).
- * ADMIN/PRINCIPAL: college-wide. HOD: one department. CLASS_TEACHER: one class.
+ * ADMIN/PRINCIPAL/OFFICE: college-wide. HOD: one department. CLASS_TEACHER: one class.
  * FACULTY: department optional; what they teach comes from teaching_assignment.
  */
 export const roleGrant = pgTable(
@@ -236,7 +242,7 @@ export const roleGrant = pgTable(
     unique("role_grant_unique").on(t.staffId, t.role, t.departmentId, t.classGroupId).nullsNotDistinct(),
     check(
       "role_grant_scope",
-      sql`(${t.role} IN ('ADMIN','PRINCIPAL') AND ${t.departmentId} IS NULL AND ${t.classGroupId} IS NULL)
+      sql`(${t.role}::text IN ('ADMIN','PRINCIPAL','OFFICE') AND ${t.departmentId} IS NULL AND ${t.classGroupId} IS NULL)
        OR (${t.role} = 'HOD' AND ${t.departmentId} IS NOT NULL AND ${t.classGroupId} IS NULL)
        OR (${t.role} = 'CLASS_TEACHER' AND ${t.classGroupId} IS NOT NULL AND ${t.departmentId} IS NULL)
        OR (${t.role} = 'FACULTY' AND ${t.classGroupId} IS NULL)`,
@@ -369,7 +375,8 @@ export const course = pgTable(
     id: id(),
     departmentId: integer("department_id").notNull().references(() => department.id),
     semester: smallint("semester").notNull(),
-    code: text("code").notNull().unique(),
+    /** Official code, e.g. 25CS31I. Shared subjects (Maths 25SC11I) have the same code in every department. */
+    code: text("code").notNull(),
     shortName: text("short_name").notNull(),
     name: text("name").notNull(),
     kind: courseKind("kind").notNull(),
@@ -377,6 +384,7 @@ export const course = pgTable(
     active: boolean("active").notNull().default(true),
   },
   (t) => [
+    unique("course_dept_code").on(t.departmentId, t.code),
     unique("course_dept_sem_short").on(t.departmentId, t.semester, t.shortName),
     check("course_semester_range", sql`${t.semester} BETWEEN 1 AND 6`),
   ],
@@ -581,6 +589,76 @@ export const leaveNotice = pgTable(
     check("leave_notice_date_order", sql`${t.toDate} >= ${t.fromDate}`),
     check("leave_notice_approval", sql`${t.status} = 'PENDING' OR (${t.approvedBy} IS NOT NULL AND ${t.approvedAt} IS NOT NULL)`),
     index("leave_notice_student_idx").on(t.studentId, t.fromDate),
+  ],
+);
+
+/**
+ * A staff member's own leave. Teachers' leave is decided by their HOD; an HOD's (and anyone without a
+ * department) by the principal; the admin can decide any. Nobody decides their own.
+ * Overlapping open leave for one person is refused by an exclusion constraint (migration 0008).
+ */
+export const staffLeave = pgTable(
+  "staff_leave",
+  {
+    id: id(),
+    staffId: integer("staff_id").notNull().references(() => staff.id),
+    type: staffLeaveType("type").notNull(),
+    fromDate: date("from_date").notNull(),
+    toDate: date("to_date").notNull(),
+    /** Half days only for a single date. */
+    part: dayPart("part").notNull().default("FULL"),
+    reason: text("reason").notNull(),
+    status: staffLeaveStatus("status").notNull().default("PENDING"),
+    decidedBy: integer("decided_by").references(() => staff.id),
+    decidedAt: timestamp("decided_at", { withTimezone: true }),
+    decisionNote: text("decision_note"),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    check("staff_leave_date_order", sql`${t.toDate} >= ${t.fromDate}`),
+    check("staff_leave_half_day", sql`${t.part} = 'FULL' OR ${t.fromDate} = ${t.toDate}`),
+    check("staff_leave_reason", sql`length(trim(${t.reason})) > 0`),
+    check(
+      "staff_leave_decided",
+      sql`(${t.status} <> 'PENDING' OR ${t.decidedBy} IS NULL)
+       AND (${t.status} NOT IN ('APPROVED', 'REJECTED') OR ${t.decidedBy} IS NOT NULL)
+       AND ((${t.decidedBy} IS NULL) = (${t.decidedAt} IS NULL))`,
+    ),
+    check("staff_leave_not_own", sql`${t.decidedBy} IS NULL OR ${t.decidedBy} <> ${t.staffId}`),
+    index("staff_leave_staff_idx").on(t.staffId, t.fromDate),
+    index("staff_leave_status_idx").on(t.status, t.fromDate),
+  ],
+);
+
+/**
+ * College updates (notices) published by the office / principal / admin. Shown on the parent portal's
+ * Updates page for the audience, and sent on WhatsApp through the outbox when `sendWhatsApp` is set.
+ * Audience: whole college (both null), one department, or one class.
+ */
+export const collegeUpdate = pgTable(
+  "college_update",
+  {
+    id: id(),
+    title: text("title").notNull(),
+    bodyEn: text("body_en").notNull(),
+    /** Optional; Kannada-only parents get the English text when missing. */
+    bodyKn: text("body_kn"),
+    departmentId: integer("department_id").references(() => department.id),
+    classGroupId: integer("class_group_id").references(() => classGroup.id),
+    sendWhatsApp: boolean("send_whatsapp").notNull().default(true),
+    /** How many parent messages were queued. */
+    messages: integer("messages").notNull().default(0),
+    publishedBy: integer("published_by").notNull().references(() => staff.id),
+    publishedAt: timestamp("published_at", { withTimezone: true }).notNull().defaultNow(),
+    /** Withdrawn updates disappear from the portal (messages already sent can't be recalled). */
+    withdrawnAt: timestamp("withdrawn_at", { withTimezone: true }),
+    withdrawnBy: integer("withdrawn_by").references(() => staff.id),
+  },
+  (t) => [
+    check("college_update_single_scope", sql`${t.departmentId} IS NULL OR ${t.classGroupId} IS NULL`),
+    check("college_update_text", sql`length(trim(${t.title})) > 0 AND length(trim(${t.bodyEn})) > 0`),
+    check("college_update_withdrawn", sql`(${t.withdrawnAt} IS NULL) = (${t.withdrawnBy} IS NULL)`),
+    index("college_update_published_idx").on(t.publishedAt),
   ],
 );
 

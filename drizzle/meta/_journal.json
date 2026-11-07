@@ -57,6 +57,13 @@
       "when": 1793540944448,
       "tag": "0007_audit_append_only",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1793644423482,
+      "tag": "0008_roles_staff_leave_updates",
+      "breakpoints": true
     }
   ]
 }

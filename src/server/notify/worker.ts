@@ -4,6 +4,9 @@
  * - Rows are claimed with FOR UPDATE SKIP LOCKED, so two runs at once never send the same row.
  * - Temporary errors retry with backoff (1, 4, 16, 64 min), then FAILED.
  * - "Not on WhatsApp" for a critical message → an SMS copy is queued (same transaction as the failure).
+ * - Past the monthly cap (NOTIFY_MONTHLY_LIMIT) real messages are SKIPPED with the reason, not sent.
+ *   Two runs at the very same moment could each send their batch before seeing the other's; the cap can
+ *   then be passed by at most one batch.
  * - A row stuck in SENDING (process killed mid-send) goes back to the queue after 10 minutes.
  *   That can, rarely, send one message twice; losing an alert would be worse.
  *
@@ -14,7 +17,7 @@ import type { DbOrTx } from "@/db/client";
 import { notification } from "@/db/schema";
 import { CRITICAL, dedupeKey, MAX_ATTEMPTS, retryDelayMinutes, sendableAt, type Trigger } from "@/lib/notify/rules";
 import { renderSms, type MessageData } from "@/lib/notify/templates";
-import type { Providers } from "./providers";
+import { limitReachedError, remainingThisMonth, type Providers } from "./providers";
 
 const STUCK_MINUTES = 10;
 
@@ -62,6 +65,7 @@ export async function processOutbox(db: DbOrTx, providers: Providers, opts: { no
     RETURNING n.id, n.dedupe_key, n.trigger::text AS trigger, n.student_id, n.parent_contact_id, n.phone, n.channel::text AS channel, n.payload, n.attempts,
       (SELECT pc.language::text FROM parent_contact pc WHERE pc.id = n.parent_contact_id) AS language`);
 
+  let remaining = rows.length ? await remainingThisMonth(db, providers) : Infinity;
   for (const m of rows) {
     if (providers.allowedNumbers && !providers.allowedNumbers.has(m.phone)) {
       await db.update(notification).set({ status: "SKIPPED", lastError: "Not in NOTIFY_ALLOWED_NUMBERS (test mode)", updatedAt: new Date() }).where(eq(notification.id, m.id));
@@ -71,6 +75,11 @@ export async function processOutbox(db: DbOrTx, providers: Providers, opts: { no
     if (typeof m.payload?.text !== "string" || m.payload.text.trim() === "") {
       await db.update(notification).set({ status: "FAILED", lastError: "Message has no text (not sent)", updatedAt: new Date() }).where(eq(notification.id, m.id));
       summary.failed++;
+      continue;
+    }
+    if (remaining <= 0) {
+      await db.update(notification).set({ status: "SKIPPED", lastError: limitReachedError(providers), updatedAt: new Date() }).where(eq(notification.id, m.id));
+      summary.skipped++;
       continue;
     }
     const provider = m.channel === "WHATSAPP" ? providers.whatsapp : providers.sms;
@@ -87,6 +96,7 @@ export async function processOutbox(db: DbOrTx, providers: Providers, opts: { no
         .set({ status: "SENT", provider: provider.name, providerMessageId: res.providerMessageId, sentAt: new Date(), lastError: null, updatedAt: new Date() })
         .where(eq(notification.id, m.id));
       summary.sent++;
+      remaining--;
       continue;
     }
 

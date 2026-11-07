@@ -13,7 +13,7 @@ import { audit } from "@/server/audit";
 import { ensure } from "@/server/current";
 import { revokeSessions } from "@/server/session";
 
-const ROLES = ["ADMIN", "PRINCIPAL", "HOD", "FACULTY", "CLASS_TEACHER"] as const;
+const ROLES = ["ADMIN", "PRINCIPAL", "OFFICE", "HOD", "FACULTY", "CLASS_TEACHER"] as const;
 
 const profileFields = {
   name: text("Name", 120),
@@ -100,7 +100,7 @@ export const grantRole = formAction(
     ensure(canManageStaff(me.actor));
     // Normalise scope fields to exactly what each role needs (the DB check enforces this too).
     const scope =
-      role === "ADMIN" || role === "PRINCIPAL"
+      role === "ADMIN" || role === "PRINCIPAL" || role === "OFFICE"
         ? { departmentId: null, classGroupId: null }
         : role === "HOD"
           ? { departmentId, classGroupId: null }

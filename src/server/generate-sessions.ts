@@ -83,7 +83,7 @@ export async function generateSessions(db: Db, opts: { classIds?: number[]; unti
   return created;
 }
 
-async function loadVersions(db: Db, classId: number): Promise<VersionDef[]> {
+export async function loadVersions(db: Pick<Db, "select">, classId: number): Promise<VersionDef[]> {
   const versions = await db.select().from(timetableVersion).where(eq(timetableVersion.classGroupId, classId)).orderBy(asc(timetableVersion.effectiveFrom));
   if (versions.length === 0) return [];
   const slots = await db.select().from(timetableSlot).where(inArray(timetableSlot.versionId, versions.map((v) => v.id)));

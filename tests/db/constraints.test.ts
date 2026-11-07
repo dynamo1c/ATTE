@@ -142,6 +142,39 @@ describe.skipIf(!url)("database constraints", () => {
     expect(await errorCode("INSERT INTO leave_notice (student_id, type, from_date, to_date, created_by, status) VALUES ($1, 'MEDICAL', '2026-10-10', '2026-10-10', $2, 'APPROVED')", [s.id, st.id])).toBe(CHECK);
   });
 
+  it("staff leave: no overlapping open leave, half days split the day, nobody decides their own", async () => {
+    const st = await one<{ id: number }>("SELECT id FROM staff s WHERE NOT EXISTS (SELECT 1 FROM staff_leave l WHERE l.staff_id = s.id) LIMIT 1");
+    const ins = (from: string, to: string, part = "FULL", status = "PENDING") =>
+      errorCode("INSERT INTO staff_leave (staff_id, type, from_date, to_date, part, reason, status) VALUES ($1, 'CASUAL', $2, $3, $4, 'x', $5)", [st.id, from, to, part, status]);
+    expect(await ins("2027-01-11", "2027-01-12")).toBeNull();
+    expect(await ins("2027-01-12", "2027-01-13")).toBe("23P01"); // overlaps the open leave
+    expect(await ins("2027-01-14", "2027-01-14", "FN")).toBeNull();
+    expect(await ins("2027-01-14", "2027-01-14", "AN")).toBeNull(); // the other half of the same day
+    expect(await ins("2027-01-14", "2027-01-14", "FN")).toBe("23P01");
+    expect(await ins("2027-01-15", "2027-01-16", "FN")).toBe(CHECK); // half day over two dates
+    expect(await ins("2027-01-12", "2027-01-12", "FULL", "CANCELLED")).toBeNull(); // cancelled leave never blocks
+    expect(await ins("2027-01-20", "2027-01-20", "FULL", "APPROVED")).toBe(CHECK); // approved needs who decided
+    expect(
+      await errorCode("INSERT INTO staff_leave (staff_id, type, from_date, to_date, reason, status, decided_by, decided_at) VALUES ($1, 'CASUAL', '2027-02-01', '2027-02-01', 'x', 'APPROVED', $1, now())", [st.id]),
+    ).toBe(CHECK);
+    expect(await errorCode("INSERT INTO staff_leave (staff_id, type, from_date, to_date, reason) VALUES ($1, 'CASUAL', '2027-02-02', '2027-02-02', '  ')", [st.id])).toBe(CHECK);
+  });
+
+  it("allows one subject per code per department (shared codes across departments)", async () => {
+    const c = await one<{ department_id: number; code: string; scheme_id: number }>("SELECT department_id, code, scheme_id FROM course WHERE code = '25SC11I' LIMIT 1");
+    const n = await one<{ n: number }>("SELECT count(*)::int AS n FROM course WHERE code = '25SC11I'");
+    expect(n.n).toBeGreaterThan(1);
+    expect(await errorCode("INSERT INTO course (department_id, semester, code, short_name, name, kind, scheme_id) VALUES ($1, 1, $2, 'M2', 'x', 'INTEGRATED', $3)", [c.department_id, c.code, c.scheme_id])).toBe(UNIQUE);
+  });
+
+  it("office is a college-wide role; college updates have one audience", async () => {
+    const st = await one<{ id: number; department_id: number }>("SELECT s.id, d.id AS department_id FROM staff s CROSS JOIN department d LIMIT 1");
+    expect(await errorCode("INSERT INTO role_grant (staff_id, role, department_id) VALUES ($1, 'OFFICE', $2)", [st.id, st.department_id])).toBe(CHECK);
+    const cg = await one<{ id: number }>("SELECT id FROM class_group LIMIT 1");
+    expect(await errorCode("INSERT INTO college_update (title, body_en, department_id, class_group_id, published_by) VALUES ('t', 'b', $2, $3, $1)", [st.id, st.department_id, cg.id])).toBe(CHECK);
+    expect(await errorCode("INSERT INTO college_update (title, body_en, published_by) VALUES (' ', 'b', $1)", [st.id])).toBe(CHECK);
+  });
+
   it("keeps the audit log append-only", async () => {
     expect(await errorCode("UPDATE audit_log SET action = 'X'")).toBe("42501");
     expect(await errorCode("DELETE FROM audit_log")).toBe("42501");

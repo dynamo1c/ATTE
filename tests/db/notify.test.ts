@@ -9,7 +9,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import { createDb, createPool, type DbTx } from "@/db/client";
 import { istInstant } from "@/lib/notify/rules";
 import { runScan } from "@/server/notify/scan";
-import { MockProvider } from "@/server/notify/providers";
+import { MockProvider, providersFor, realSentThisMonth, type MessageProvider } from "@/server/notify/providers";
 import { processOutbox } from "@/server/notify/worker";
 
 const url = process.env.DATABASE_URL;
@@ -68,7 +68,7 @@ describe("parent notifications", () => {
       // Send with the mock; one parent of a shortage alert is "not on WhatsApp" → SMS copy.
       const target = await tx.execute<{ phone: string }>(sql`SELECT phone FROM notification WHERE trigger = 'ATTENDANCE_SHORTAGE' AND channel = 'WHATSAPP' LIMIT 1`);
       const mock = new MockProvider(new Set([target.rows[0].phone]));
-      const providers = { whatsapp: mock, sms: mock, allowedNumbers: null };
+      const providers = { whatsapp: mock, sms: mock, allowedNumbers: null, real: false };
       const sent = await processOutbox(tx, providers, { now: sundayEvening, limit: 100_000 });
       expect(sent.sent).toBeGreaterThan(1000);
       expect(sent.fallbacks).toBeGreaterThanOrEqual(1);
@@ -79,7 +79,7 @@ describe("parent notifications", () => {
 
       // Test mode: numbers outside the allow-list are skipped, not sent.
       await tx.execute(sql`UPDATE notification SET status = 'QUEUED' WHERE id = (SELECT min(id) FROM notification)`);
-      const limited = await processOutbox(tx, { ...providers, allowedNumbers: new Set(["+919999999999"]) }, { now: sundayEvening });
+      const limited = await processOutbox(tx, { ...providers, allowedNumbers: new Set(["+919999999999"]), real: false }, { now: sundayEvening });
       expect(limited).toMatchObject({ sent: 0, skipped: 1 });
     });
   }, 120_000);
@@ -93,8 +93,47 @@ describe("parent notifications", () => {
       await runScan(tx, { now: night });
       const early = await count(tx, sql`SELECT count(*)::int AS n FROM notification WHERE scheduled_for < ${istInstant("2026-11-02", 8).toISOString()}::timestamptz`);
       expect(early).toBe(0);
-      const sent = await processOutbox(tx, { whatsapp: new MockProvider(), sms: new MockProvider(), allowedNumbers: null }, { now: night });
+      const sent = await processOutbox(tx, { whatsapp: new MockProvider(), sms: new MockProvider(), allowedNumbers: null, real: false }, { now: night });
       expect(sent.sent).toBe(0);
     });
   }, 120_000);
+
+  it("refuses real messages to every number while the dummy data is loaded", async (ctx) => {
+    if (!(await seeded())) ctx.skip();
+    await inRollback(async (tx) => {
+      const real = { NOTIFY_PROVIDER: "whatsapp", WHATSAPP_TOKEN: "t", WHATSAPP_PHONE_NUMBER_ID: "1", NOTIFY_ALLOW_ALL: "yes" } as unknown as NodeJS.ProcessEnv;
+      await expect(providersFor(tx, real)).rejects.toThrow(/dummy data/);
+      // Limited to test numbers: allowed.
+      expect((await providersFor(tx, { ...real, NOTIFY_ALLOW_ALL: "", NOTIFY_ALLOWED_NUMBERS: "+919845012345" })).allowedNumbers?.has("+919845012345")).toBe(true);
+      // The mock never sends anything, so it is always fine.
+      expect((await providersFor(tx, { NOTIFY_PROVIDER: "mock" } as unknown as NodeJS.ProcessEnv)).real).toBe(false);
+      // Real data loaded (flag off): everyone is allowed once NOTIFY_ALLOW_ALL=yes.
+      await tx.execute(sql`UPDATE college_settings SET demo_data = false`);
+      expect((await providersFor(tx, real)).allowedNumbers).toBeNull();
+    });
+  });
+
+  it("stops real sends at the monthly cap and says why", async (ctx) => {
+    if (!(await seeded())) ctx.skip();
+    await inRollback(async (tx) => {
+      // A pretend real sender, so nothing leaves the machine.
+      let calls = 0;
+      const fake: MessageProvider = { name: "fake_real", send: async (m) => (calls++, { ok: true, providerMessageId: `fake-${m.id}` }) };
+      const used = await realSentThisMonth(tx);
+      await tx.execute(sql`UPDATE notification SET status = 'SKIPPED' WHERE status = 'QUEUED'`);
+      const phone = "+919000000001";
+      for (let i = 0; i < 3; i++) {
+        await tx.execute(sql`INSERT INTO notification (dedupe_key, trigger, phone, channel, template, payload, scheduled_for)
+          VALUES (${`CAP-TEST:${i}`}, 'BROADCAST', ${phone}, 'WHATSAPP', 'TEST', ${JSON.stringify({ data: { kind: "BROADCAST", textEn: "x", textKn: "x" }, text: "x" })}::jsonb, now() - interval '1 minute')`);
+      }
+      const providers = { whatsapp: fake, sms: fake, allowedNumbers: null, real: true, monthlyLimit: used + 2 };
+      const s = await processOutbox(tx, providers);
+      expect(calls).toBe(2);
+      expect(s.sent).toBe(2);
+      expect(s.skipped).toBe(1);
+      expect(await realSentThisMonth(tx)).toBe(used + 2);
+      const { rows } = await tx.execute<{ last_error: string }>(sql`SELECT last_error FROM notification WHERE dedupe_key LIKE 'CAP-TEST:%' AND status = 'SKIPPED'`);
+      expect(rows[0].last_error).toMatch(/Monthly message limit reached/);
+    });
+  });
 });

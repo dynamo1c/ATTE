@@ -3,7 +3,7 @@ import Link from "next/link";
 import { getDb } from "@/db/client";
 import { ActionForm, Field, SubmitButton } from "@/components/action-form";
 import { Card, Input, PageHeader, Select, buttonClass } from "@/components/ui";
-import { canEditCalendar, classTeacherClassIds, hodDepartmentIds, isAdmin, isPrincipal, seesWholeCollege } from "@/lib/auth/permissions";
+import { canEditCalendar, classTeacherClassIds, hodDepartmentIds, seesWholeCollege } from "@/lib/auth/permissions";
 import { addDays, isoWeekday, todayIn, weekStart } from "@/lib/domain/dates";
 import { WEEKDAYS } from "@/server/class-data";
 import { requireStaff } from "@/server/current";
@@ -59,9 +59,7 @@ export default async function CalendarPage(props: PageProps<"/calendar">) {
   const byDate = new Map<string, typeof entries>();
   for (const e of entries.filter(relevant)) byDate.set(e.date, [...(byDate.get(e.date) ?? []), e]);
 
-  const canDelete = (e: (typeof entries)[number]) =>
-    isAdmin(me.actor) ||
-    (e.department_id === null && e.class_group_id === null ? isPrincipal(me.actor) : isPrincipal(me.actor) || hodDepts.includes(e.department_id ?? e.class_dept_id!));
+  const canDelete = canEditCalendar(me.actor);
 
   const days: string[] = [];
   for (let d = gridStart; d <= gridEnd; d = addDays(d, 1)) days.push(d);
@@ -71,7 +69,7 @@ export default async function CalendarPage(props: PageProps<"/calendar">) {
     <>
       <PageHeader
         title="Calendar"
-        subtitle="Holidays and exam days stop regular classes. Days not listed follow the normal week (Sunday off)."
+        subtitle={`Holidays and exam days stop regular classes. Days not listed follow the normal week (Sunday off).${canDelete ? "" : " Kept by the college office."}`}
         actions={
           <div className="flex items-center gap-2">
             <Link href={`/calendar?m=${prevMonth}`} className={buttonClass("secondary", "sm")}>
@@ -111,7 +109,7 @@ export default async function CalendarPage(props: PageProps<"/calendar">) {
                           {e.note ?? TYPE_LABEL[e.type]}
                           {e.follows_weekday && ` (${WEEKDAYS[e.follows_weekday]} timetable)`}
                         </span>
-                        {canDelete(e) && (
+                        {canDelete && (
                           <ActionForm action={deleteCalendarDay} confirm={`Remove “${e.note ?? TYPE_LABEL[e.type]}” on ${d}?`}>
                             <input type="hidden" name="id" value={e.id} />
                             <button type="submit" aria-label="Remove" className="px-0.5 opacity-50 hover:opacity-100">

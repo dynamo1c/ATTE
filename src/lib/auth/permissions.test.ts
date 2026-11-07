@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  canBroadcast,
+  canDecideStaffLeave,
   canEditCalendar,
   canEditLockedAttendance,
   canEnterMarks,
@@ -17,6 +17,11 @@ import {
   navFor,
   canViewAudit,
   canImport,
+  canPublishUpdates,
+  canRecordLeave,
+  leaveDecidedBy,
+  seesWholeCollege,
+  staffLeaveScope,
   visibleDepartmentIds,
   type Actor,
   type Grant,
@@ -30,6 +35,8 @@ const principal = actor([g("PRINCIPAL")]);
 const hodCs = actor([g("HOD", 2), g("FACULTY", 2)]);
 const classTeacher = actor([g("FACULTY", 2), g("CLASS_TEACHER", null, 20)], [20, 21]);
 const faculty = actor([g("FACULTY", 2)], [21]);
+const office = actor([g("OFFICE")]);
+const labels = (a: Actor) => navFor(a).map((n) => n.label);
 const csSem3 = { id: 20, departmentId: 2 };
 const csSem5 = { id: 21, departmentId: 2 };
 const meSem3 = { id: 30, departmentId: 6 };
@@ -42,11 +49,54 @@ describe("permissions", () => {
     expect(visibleDepartmentIds(admin)).toBeNull();
   });
 
-  it("principal sees everything but manages only the calendar", () => {
+  it("principal sees everything and changes nothing in departments", () => {
     expect(canViewClass(principal, meSem3)).toBe(true);
     expect(canManageClass(principal, meSem3)).toBe(false);
     expect(canManageSettings(principal)).toBe(false);
-    expect(canEditCalendar(principal, { kind: "COLLEGE" })).toBe(true);
+    expect(canEditCalendar(principal, { kind: "COLLEGE" })).toBe(false);
+    expect(labels(principal)).toContain("Settings");
+  });
+
+  it("office keeps the calendar, updates and student records, never attendance or marks", () => {
+    expect(seesWholeCollege(office)).toBe(true);
+    expect(canEditCalendar(office, { kind: "COLLEGE" })).toBe(true);
+    expect(canPublishUpdates(office)).toBe(true);
+    expect(canManageClassStudents(office, meSem3)).toBe(true);
+    expect(canRecordLeave(office, meSem3)).toBe(false);
+    expect(canManageClass(office, meSem3)).toBe(false);
+    expect(canMarkSession(office, { classRef: csSem3, assignedStaffIds: [] })).toBe(false);
+    expect(canEnterMarks(office, { classRef: csSem3, isFinal: false, assignedStaffIds: [] })).toBe(false);
+    expect(canPublishMarks(office, csSem3)).toBe(false);
+    expect(canViewAudit(office)).toBe(false);
+    expect(canManageSettings(office)).toBe(false);
+    const nav = labels(office);
+    expect(nav).toContain("Updates");
+    expect(nav).toContain("Students");
+    expect(nav).not.toContain("Attendance");
+    expect(nav).not.toContain("Settings");
+    expect(nav).not.toContain("Audit log");
+  });
+
+  it("staff leave: teachers to their HOD, HODs and staff without a department to the principal", () => {
+    const teacherCs = { staffId: 50, departmentId: 2, isHod: false };
+    const hodApplicant = { staffId: 51, departmentId: 2, isHod: true };
+    const officeApplicant = { staffId: 52, departmentId: null, isHod: false };
+    expect(leaveDecidedBy(teacherCs)).toBe("HOD");
+    expect(leaveDecidedBy(hodApplicant)).toBe("PRINCIPAL");
+    expect(leaveDecidedBy(officeApplicant)).toBe("PRINCIPAL");
+    const hod = { ...hodCs, staffId: 51 };
+    const hodMe = actor([g("HOD", 6)]);
+    expect(canDecideStaffLeave(hod, teacherCs)).toBe(true);
+    expect(canDecideStaffLeave(hodMe, teacherCs)).toBe(false);
+    expect(canDecideStaffLeave(hod, hodApplicant)).toBe(false); // own leave
+    expect(canDecideStaffLeave({ ...principal, staffId: 9 }, hodApplicant)).toBe(true);
+    expect(canDecideStaffLeave({ ...principal, staffId: 9 }, teacherCs)).toBe(false);
+    expect(canDecideStaffLeave({ ...admin, staffId: 9 }, teacherCs)).toBe(true);
+    expect(canDecideStaffLeave({ ...admin, staffId: 52 }, officeApplicant)).toBe(false);
+    expect(canDecideStaffLeave({ ...office, staffId: 9 }, teacherCs)).toBe(false);
+    expect([admin, principal, hodCs, faculty, office].map(staffLeaveScope)).toEqual(["ALL", "ALL", "DEPARTMENTS", "OWN", "OWN"]);
+    expect(labels(faculty)).toContain("My leave");
+    expect(labels(hodCs)).toContain("Staff leave");
   });
 
   it("HOD manages only their own department", () => {
@@ -54,9 +104,7 @@ describe("permissions", () => {
     expect(canManageDepartment(hodCs, 6)).toBe(false);
     expect(canManageClass(hodCs, csSem3)).toBe(true);
     expect(canViewClass(hodCs, meSem3)).toBe(false);
-    expect(canEditCalendar(hodCs, { kind: "DEPARTMENT", departmentId: 2 })).toBe(true);
-    expect(canEditCalendar(hodCs, { kind: "DEPARTMENT", departmentId: 6 })).toBe(false);
-    expect(canEditCalendar(hodCs, { kind: "COLLEGE" })).toBe(false);
+    expect(canEditCalendar(hodCs, { kind: "DEPARTMENT", departmentId: 2 })).toBe(false);
     expect(visibleDepartmentIds(hodCs)).toEqual([2]);
   });
 
@@ -87,7 +135,6 @@ describe("permissions", () => {
   });
 
   it("builds navigation from roles", () => {
-    const labels = (a: Actor) => navFor(a).map((n) => n.label);
     expect(labels(admin)).toContain("Settings");
     expect(labels(admin)).toContain("Departments");
     expect(labels(principal)).not.toContain("Departments");
@@ -100,7 +147,7 @@ describe("permissions", () => {
 
   it("parent messages: who sees, sends notices, and manages the queue", () => {
     expect([admin, principal, hodCs, classTeacher, faculty].map(canViewMessages)).toEqual([true, true, true, true, false]);
-    expect([admin, principal, hodCs, classTeacher, faculty].map(canBroadcast)).toEqual([true, true, false, false, false]);
+    expect([admin, principal, hodCs, classTeacher, faculty].map(canPublishUpdates)).toEqual([true, true, false, false, false]);
     expect([admin, principal, hodCs].map(canManageOutbox)).toEqual([true, false, false]);
   });
 

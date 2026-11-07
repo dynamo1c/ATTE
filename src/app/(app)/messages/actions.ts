@@ -1,22 +1,19 @@
 "use server";
 
 import { randomUUID } from "node:crypto";
-import { and, eq, inArray, ne, sql } from "drizzle-orm";
+import { and, eq, inArray, ne } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getDb } from "@/db/client";
 import { notification } from "@/db/schema";
-import { canBroadcast, canManageOutbox } from "@/lib/auth/permissions";
-import { dedupeKey } from "@/lib/notify/rules";
-import { int, text } from "@/lib/forms";
+import { canManageOutbox } from "@/lib/auth/permissions";
+import { int, phone } from "@/lib/forms";
 import { formAction, UserError } from "@/server/action";
 import { audit } from "@/server/audit";
 import { ensure } from "@/server/current";
-import { enqueueForStudents, type Draft } from "@/server/notify/outbox";
-import { providersFromEnv } from "@/server/notify/providers";
+import { providersFor } from "@/server/notify/providers";
 import { runScan } from "@/server/notify/scan";
 import { processOutbox } from "@/server/notify/worker";
-import { getCurrentTerm } from "@/server/queries";
 
 export const retryMessage = formAction(z.object({ id: int("Message") }), async ({ id }, { me }) => {
   ensure(canManageOutbox(me.actor), "Only the admin can retry messages.");
@@ -53,7 +50,7 @@ export const runNow = formAction(z.object({}), async (_input, { me }) => {
   ensure(canManageOutbox(me.actor), "Only the admin can run the sender.");
   let providers;
   try {
-    providers = providersFromEnv();
+    providers = await providersFor(getDb());
   } catch (e) {
     throw new UserError(`Message provider is not set up: ${(e as Error).message}`);
   }
@@ -74,40 +71,46 @@ export const runNow = formAction(z.object({}), async (_input, { me }) => {
   return { ok: true, message: `Checked ${scan.students} students: ${queued} new message${queued === 1 ? "" : "s"}. Sent ${sent}${failed ? `, ${failed} failed` : ""}${skipped ? `, ${skipped} skipped (test mode)` : ""} via ${providers.whatsapp.name}.` };
 });
 
-const AUDIENCE = /^(college|dept:\d{1,9}|class:\d{1,9})$/;
-
-export const sendBroadcast = formAction(
-  z.object({
-    audience: z.string().regex(AUDIENCE, "Choose who receives it"),
-    textEn: text("English text", 600),
-    textKn: text("Kannada text", 600),
-  }),
-  async ({ audience, textEn, textKn }, { me }) => {
-    ensure(canBroadcast(me.actor), "Only the principal or admin can send notices to parents.");
-    const term = await getCurrentTerm();
-    if (!term) throw new UserError("No term is set up.");
-    const [kind, idRaw] = audience.split(":");
-    const filter = kind === "dept" ? sql`AND cg.department_id = ${Number(idRaw)}` : kind === "class" ? sql`AND cg.id = ${Number(idRaw)}` : sql``;
-    const db = getDb();
-    const { rows } = await db.execute<{ id: number }>(sql`
-      SELECT s.id FROM class_membership m
-      JOIN student s ON s.id = m.student_id
-      JOIN class_group cg ON cg.id = m.class_group_id
-      WHERE m.term_id = ${term.id} AND m.left_on IS NULL AND s.status IN ('ACTIVE', 'DETAINED') ${filter}`);
-    if (!rows.length) throw new UserError("No current students in that group.");
-    const broadcastId = randomUUID();
-    const drafts: Draft[] = rows.map((r) => ({
-      trigger: "BROADCAST",
-      studentId: r.id,
-      data: { kind: "BROADCAST", textEn, textKn },
-      key: (cid) => dedupeKey.broadcast(broadcastId, cid),
-    }));
-    const queued = await db.transaction(async (tx) => {
-      const n = await enqueueForStudents(tx, drafts, { createdBy: me.id });
-      await audit(tx, { actorStaffId: me.id, action: "BROADCAST", entity: "notification", entityId: broadcastId, after: { audience, textEn, textKn, students: rows.length, messages: n } });
-      return n;
-    });
-    revalidatePath("/messages");
-    return { ok: true, message: `Notice queued: ${queued} message${queued === 1 ? "" : "s"} to parents of ${rows.length} students. Numbers without consent are left out.` };
-  },
-);
+/**
+ * Setup check: one WhatsApp message to a number of your choice, through the outbox like every other
+ * message, then the sender runs at once and the result is shown. Not tied to a student.
+ */
+export const sendTestMessage = formAction(z.object({ phone: phone("Mobile number") }), async ({ phone: to }, { me }) => {
+  ensure(canManageOutbox(me.actor), "Only the admin can send test messages.");
+  const db = getDb();
+  let providers;
+  try {
+    providers = await providersFor(db);
+  } catch (e) {
+    throw new UserError(`Message provider is not set up: ${(e as Error).message}`);
+  }
+  if (providers.allowedNumbers && !providers.allowedNumbers.has(to)) {
+    throw new UserError(`${to} is not in NOTIFY_ALLOWED_NUMBERS, so it would be skipped. Add it to .env and restart the app.`, { phone: ["Not in the allowed numbers"] });
+  }
+  const text = `MEI Polytechnic – test message\nWhatsApp from the attendance app is working (sent by ${me.name}).`;
+  const [row] = await db.transaction(async (tx) => {
+    const inserted = await tx
+      .insert(notification)
+      .values({
+        dedupeKey: `TEST:${randomUUID()}`,
+        trigger: "BROADCAST",
+        phone: to,
+        channel: "WHATSAPP",
+        template: "TEST",
+        payload: { data: { kind: "BROADCAST", textEn: text, textKn: text }, text },
+        scheduledFor: new Date(),
+        createdBy: me.id,
+      })
+      .returning({ id: notification.id });
+    await audit(tx, { actorStaffId: me.id, action: "TEST_MESSAGE", entity: "notification", entityId: inserted[0].id, after: { phone: to } });
+    return inserted;
+  });
+  for (let i = 0; i < 20; i++) {
+    const s = await processOutbox(db, providers, { limit: 250 });
+    if (s.sent + s.failed + s.retrying + s.skipped === 0) break;
+  }
+  const [after] = await db.select({ status: notification.status, lastError: notification.lastError }).from(notification).where(eq(notification.id, row.id));
+  revalidatePath("/messages");
+  if (after.status === "SENT") return { ok: true, message: `Sent to ${to} via ${providers.whatsapp.name}.${providers.real ? " Check the phone." : " (Mock sender: nothing really left the server.)"}` };
+  throw new UserError(`Not sent (${after.status.toLowerCase()}): ${after.lastError ?? "no reason given"}`);
+});
