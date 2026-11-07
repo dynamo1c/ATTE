@@ -146,6 +146,11 @@ describe.skipIf(!url)("database constraints", () => {
     expect(await errorCode(approved, [s.id, st.id, "PRESENT"])).toBeNull();
   });
 
+  it("marks have no approval step: a test can't be put 'with the HOD'", async () => {
+    const t = await one<{ id: number }>("SELECT id FROM assessment LIMIT 1");
+    expect(await errorCode("UPDATE assessment SET status = 'SUBMITTED' WHERE id = $1", [t.id])).toBe(CHECK);
+  });
+
   it("staff leave: no overlapping open leave, half days split the day, nobody decides their own", async () => {
     const st = await one<{ id: number }>("SELECT id FROM staff s WHERE NOT EXISTS (SELECT 1 FROM staff_leave l WHERE l.staff_id = s.id) LIMIT 1");
     const ins = (from: string, to: string, part = "FULL", status = "PENDING") =>

@@ -7,9 +7,9 @@ import { z } from "zod";
 import { getDb } from "@/db/client";
 import { assessment, mark, markSubmission } from "@/db/schema";
 import type { ActionState } from "@/lib/action-state";
-import { canEnterMarks, canPublishMarks } from "@/lib/auth/permissions";
+import { canEnterMarks } from "@/lib/auth/permissions";
 import { computeSubjectResult, formatEntry, formatMark, isLowMark, type MarkEntry } from "@/lib/domain/marks";
-import { int, text } from "@/lib/forms";
+import { int } from "@/lib/forms";
 import { isIsoDate, todayIn } from "@/lib/domain/dates";
 import { dedupeKey } from "@/lib/notify/rules";
 import { formAction, toActionError, UserError } from "@/server/action";
@@ -38,8 +38,8 @@ async function load(me: CurrentStaff, assessmentId: number) {
   const found = await getAssessmentContext(assessmentId);
   if (!found) throw new UserError("This test no longer exists. Go back and reload.");
   const { ctx, part } = found;
-  ensure(canEnterMarks(me.actor, { classRef: ctx.classRef, isFinal: part.isFinal, assignedStaffIds: part.assignedStaffIds }), "You can't enter marks for this test.");
-  return { ctx, part, publisher: canPublishMarks(me.actor, ctx.classRef) };
+  ensure(canEnterMarks(me.actor, { classRef: ctx.classRef, assignedStaffIds: part.assignedStaffIds }), "You can't enter marks for this test.");
+  return { ctx, part };
 }
 
 const sameEntry = (a: MarkEntry | null, b: MarkEntry | null) => (a === null || b === null ? a === b : a.flag === b.flag && a.value === b.value);
@@ -51,10 +51,8 @@ export async function saveMarks(raw: SaveMarksInput): Promise<SaveMarksResult> {
   if (!parsed.success) return { ok: false, error: "Invalid data. Reload the page." };
   const input = parsed.data;
   try {
-    const { ctx, part, publisher } = await load(me, input.assessmentId);
+    const { ctx, part } = await load(me, input.assessmentId);
     const a = part.assessment;
-    if (a.status === "PUBLISHED") throw new UserError("These marks are published. Ask the HOD to reopen them first.");
-    if (a.status === "SUBMITTED" && !publisher) throw new UserError("These marks are with the HOD. Ask the HOD to send them back if something needs changing.");
     if (input.heldOn !== null && (!isIsoDate(input.heldOn) || input.heldOn > todayIn())) throw new UserError("The test date can't be in the future.");
 
     // Validate every entry: one per student, a number with at most 2 decimals within max, or AB / MP.
@@ -72,6 +70,11 @@ export async function saveMarks(raw: SaveMarksInput): Promise<SaveMarksResult> {
     const missing = roster.filter((r) => !after.has(r.studentId));
     const extra = [...after.keys()].filter((id) => !known.has(id));
     if (missing.length || extra.length) throw new UserError("The class list changed since you opened this page. Reload — your marks are kept as a draft.");
+    // Once shown to parents, a correction may change a mark but not leave a student without one.
+    const blanks = roster.filter((r) => !r.former && !after.get(r.studentId));
+    if (a.status === "PUBLISHED" && blanks.length) {
+      throw new UserError(`These marks are shown to parents, so every student needs a mark, AB or MP (rolls ${blanks.slice(0, 8).map((r) => r.roll).join(", ")}).`);
+    }
 
     const changes = roster
       .filter((r) => !sameEntry(r.entry, after.get(r.studentId)!))
@@ -84,7 +87,6 @@ export async function saveMarks(raw: SaveMarksInput): Promise<SaveMarksResult> {
       if (fresh.length === 0) return null; // a retry of a save that already went through
       const [row] = await tx.select({ version: assessment.version, status: assessment.status }).from(assessment).where(eq(assessment.id, a.id)).for("update");
       if (row.version !== input.version) throw new UserError("Someone else saved these marks just now. Reload to see them — your marks are kept as a draft.");
-      if (row.status === "PUBLISHED" || (row.status === "SUBMITTED" && !publisher)) throw new UserError("These marks were submitted or published meanwhile. Reload.");
       if (toDelete.length) await tx.delete(mark).where(and(eq(mark.assessmentId, a.id), inArray(mark.studentId, toDelete)));
       if (toUpsert.length) {
         await tx
@@ -100,13 +102,14 @@ export async function saveMarks(raw: SaveMarksInput): Promise<SaveMarksResult> {
         .set({ heldOn: input.heldOn ?? a.heldOn, version: sql`${assessment.version} + 1`, updatedAt: new Date() })
         .where(eq(assessment.id, a.id))
         .returning({ version: assessment.version });
-      await audit(tx, { actorStaffId: me.id, action: "ENTER_MARKS", entity: "assessment", entityId: a.id, after: { heldOn: input.heldOn, changes } });
+      await audit(tx, { actorStaffId: me.id, action: a.status === "PUBLISHED" ? "CORRECT_MARKS" : "ENTER_MARKS", entity: "assessment", entityId: a.id, after: { heldOn: input.heldOn, changes } });
       return updated.version;
     });
     revalidatePath("/marks");
     if (version === null) return { ok: true, message: "Already saved." };
     const entered = [...after.values()].filter(Boolean).length;
-    return { ok: true, version, message: `Saved: ${entered} of ${roster.length} entered${changes.length ? `, ${changes.length} changed` : ""}.` };
+    const shown = a.status === "PUBLISHED" ? " Parents see the corrected marks (no new message)." : "";
+    return { ok: true, version, message: `Saved: ${entered} of ${roster.length} entered${changes.length ? `, ${changes.length} changed` : ""}.${shown}` };
   } catch (e) {
     unstable_rethrow(e);
     return toActionError(e);
@@ -124,25 +127,12 @@ async function requireComplete(classId: number, a: { id: number; heldOn: string 
 
 const statusSchema = z.object({ assessmentId: int("Test"), version: int("Version") });
 
-export const submitMarks = formAction(statusSchema, async ({ assessmentId, version }, { me }) => {
-  const { ctx, part } = await load(me, assessmentId);
-  await requireComplete(ctx.classRef.id, part.assessment);
-  await getDb().transaction(async (tx) => {
-    const done = await tx
-      .update(assessment)
-      .set({ status: "SUBMITTED", statusNote: null, version: sql`${assessment.version} + 1`, updatedAt: new Date() })
-      .where(and(eq(assessment.id, assessmentId), eq(assessment.version, version), eq(assessment.status, "DRAFT")))
-      .returning({ id: assessment.id });
-    if (!done.length) throw new UserError("These marks changed meanwhile. Reload.");
-    await audit(tx, { actorStaffId: me.id, action: "SUBMIT_MARKS", entity: "assessment", entityId: assessmentId });
-  });
-  revalidatePath("/marks");
-  return { ok: true, message: "Sent to the HOD for publishing." };
-});
-
+/**
+ * "Done – show to parents": the teacher has entered everyone's marks. Parents see them on the portal and
+ * get one WhatsApp per test (dedupe key per test and student). Marks stay editable afterwards.
+ */
 export const publishMarks = formAction(statusSchema, async ({ assessmentId, version }, { me }) => {
-  const { ctx, part, publisher } = await load(me, assessmentId);
-  ensure(publisher, "Only the HOD or admin can publish marks.");
+  const { ctx, part } = await load(me, assessmentId);
   const roster = await requireComplete(ctx.classRef.id, part.assessment);
 
   // Parent messages: the mark, internal marks so far (published parts including this one), low marks flagged.
@@ -180,48 +170,12 @@ export const publishMarks = formAction(statusSchema, async ({ assessmentId, vers
     const done = await tx
       .update(assessment)
       .set({ status: "PUBLISHED", statusNote: null, publishedBy: me.id, publishedAt: new Date(), version: sql`${assessment.version} + 1`, updatedAt: new Date() })
-      .where(and(eq(assessment.id, assessmentId), eq(assessment.version, version), inArray(assessment.status, ["DRAFT", "SUBMITTED"])))
+      .where(and(eq(assessment.id, assessmentId), eq(assessment.version, version), eq(assessment.status, "DRAFT")))
       .returning({ id: assessment.id });
     if (!done.length) throw new UserError("These marks changed meanwhile. Reload.");
     await audit(tx, { actorStaffId: me.id, action: "PUBLISH_MARKS", entity: "assessment", entityId: assessmentId });
     return enqueueForStudents(tx, drafts, { createdBy: me.id });
   });
   revalidatePath("/marks");
-  return { ok: true, message: `Published.${queued ? ` ${queued} message${queued === 1 ? "" : "s"} queued for parents.` : ""}` };
+  return { ok: true, message: `Shown to parents.${queued ? ` ${queued} message${queued === 1 ? "" : "s"} queued.` : ""} You can still correct marks here.` };
 });
-
-const noteSchema = z.object({ assessmentId: int("Test"), version: int("Version"), note: text("Reason", 300) });
-
-export const sendBackMarks = formAction(noteSchema, async ({ assessmentId, version, note }, { me }) => {
-  const { publisher } = await load(me, assessmentId);
-  ensure(publisher, "Only the HOD or admin can send marks back.");
-  await getDb().transaction(async (tx) => {
-    const done = await tx
-      .update(assessment)
-      .set({ status: "DRAFT", statusNote: `Sent back by ${me.name}: ${note}`, version: sql`${assessment.version} + 1`, updatedAt: new Date() })
-      .where(and(eq(assessment.id, assessmentId), eq(assessment.version, version), eq(assessment.status, "SUBMITTED")))
-      .returning({ id: assessment.id });
-    if (!done.length) throw new UserError("These marks changed meanwhile. Reload.");
-    await audit(tx, { actorStaffId: me.id, action: "SEND_BACK_MARKS", entity: "assessment", entityId: assessmentId, reason: note });
-  });
-  revalidatePath("/marks");
-  return { ok: true, message: "Sent back to the teacher." };
-});
-
-/** Published marks need correcting: back to draft (audited). Parents are not messaged again. */
-export const reopenMarks = formAction(noteSchema, async ({ assessmentId, version, note }, { me }) => {
-  const { publisher } = await load(me, assessmentId);
-  ensure(publisher, "Only the HOD or admin can reopen published marks.");
-  await getDb().transaction(async (tx) => {
-    const done = await tx
-      .update(assessment)
-      .set({ status: "DRAFT", statusNote: `Reopened by ${me.name}: ${note}`, version: sql`${assessment.version} + 1`, updatedAt: new Date() })
-      .where(and(eq(assessment.id, assessmentId), eq(assessment.version, version), eq(assessment.status, "PUBLISHED")))
-      .returning({ id: assessment.id });
-    if (!done.length) throw new UserError("These marks changed meanwhile. Reload.");
-    await audit(tx, { actorStaffId: me.id, action: "REOPEN_MARKS", entity: "assessment", entityId: assessmentId, reason: note });
-  });
-  revalidatePath("/marks");
-  return { ok: true, message: "Reopened. Marks can be corrected and published again." };
-});
-

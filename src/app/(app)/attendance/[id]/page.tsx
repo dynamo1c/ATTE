@@ -24,7 +24,7 @@ export default async function MarkPage(props: PageProps<"/attendance/[id]">) {
     if (s.markedById !== null && isDepartmentFaculty(me.actor, s.classRef.departmentId)) {
       return (
         <>
-          <PageHeader title={`${s.subject} · ${s.className}`} subtitle={`${formatDateLong(s.date)} · ${s.startsAt}–${s.endsAt}`} back={{ href: "/today", label: "Department today" }} />
+          <PageHeader title={`${s.subject} · ${s.className}`} subtitle={`${formatDateLong(s.date)} · ${s.startsAt}–${s.endsAt}`} back={{ href: "/attendance", label: "Attendance" }} />
           <Card>
             <p className="text-sm text-slate-700">
               {s.status === "NOT_HELD" ? "Marked as not held" : "Attendance saved"} by <span className="font-medium">{s.markedBy}</span> · {s.markedAt}.

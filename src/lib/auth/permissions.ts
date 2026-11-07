@@ -170,17 +170,14 @@ export function canEditCalendar(a: Actor, _scope?: CalendarScope) {
 }
 
 /**
- * Enter marks for one part of a subject: the teacher(s) of that part (theory tests + activity: theory
- * teacher; practical tests: lab teacher), the HOD, or the admin. Final exam marks: HOD / admin only.
+ * Enter marks for one part of a subject, final exam included: the teacher(s) of that part (theory tests,
+ * activity and theory final: theory teacher; practical tests and final: lab teacher), the HOD, or the admin.
+ * The same people press "Done – show to parents" and correct marks afterwards. No approval step
+ * (decided 2026-11-07).
  */
-export function canEnterMarks(a: Actor, p: { classRef: ClassRef; isFinal: boolean; assignedStaffIds: readonly number[] }) {
+export function canEnterMarks(a: Actor, p: { classRef: ClassRef; assignedStaffIds: readonly number[] }) {
   if (isAdmin(a) || hodDepartmentIds(a).includes(p.classRef.departmentId)) return true;
-  return !p.isFinal && p.assignedStaffIds.includes(a.staffId);
-}
-
-/** Publish marks to students and parents, send back, or reopen published marks. */
-export function canPublishMarks(a: Actor, c: ClassRef) {
-  return isAdmin(a) || hodDepartmentIds(a).includes(c.departmentId);
+  return p.assignedStaffIds.includes(a.staffId);
 }
 
 /** "Not yet entered" report per teacher: whole college, or the HOD's departments. */
@@ -270,8 +267,6 @@ export interface NavItem {
 
 export function navFor(a: Actor): NavItem[] {
   const items: NavItem[] = [{ href: "/", label: "Dashboard" }];
-  const cover = coverDepartmentIds(a);
-  if (cover === null || cover.length > 0) items.push({ href: "/today", label: "Department today" });
   if (classTeacherClassIds(a).length > 0) items.push({ href: "/my-class", label: "My class" });
   const anyClass = seesWholeCollege(a) || hodDepartmentIds(a).length > 0 || classTeacherClassIds(a).length > 0 || a.teachingClassIds.length > 0;
   const marks = isAdmin(a) || hodDepartmentIds(a).length > 0 || a.teachingClassIds.length > 0 || a.grants.some((g) => g.role === "FACULTY" && g.departmentId !== null);

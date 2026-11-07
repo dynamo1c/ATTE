@@ -47,8 +47,8 @@ Rule that follows: **nothing about "5 subjects", "4 internals" or "2 batches" is
 | Admin | Whole college | Everything: setup, users, calendar, imports, message settings and outbox, audit log; decides anyone's leave (except their own) |
 | Principal | Whole college | **View only** (decided 2026-11-07): every dashboard, department overview with HOD contacts, report, staff list, parent messages, audit log. Approves nothing (no leave of anyone), publishes nothing, marks nothing. **[OPEN]** a principal ↔ HOD messaging space, once the principal says what is needed |
 | Office | Whole college | Keeps the college calendar (holidays, exams, events; the only role besides admin that edits it); publishes college updates (WhatsApp + parent portal); edits students and parent numbers college-wide; views and downloads every report, marks included, but never changes attendance or marks. Own leave is recorded without approval |
-| HOD | Own department | Manage department subjects, timetables, faculty assignment; **adds the department's staff** (as faculty; can make them class teacher of a department class; can edit / reset / deactivate them, never senior roles); approve late edits; approve student leave choosing **present / excused / absent** for each notice; decide **teachers' own leave**; publish marks; publish updates for the department or its classes; see compliance. Teaches own subjects like any teacher. Own leave is recorded without approval |
-| Faculty | Department + assigned subjects | **Department today** page: every class of the department period by period with who saved it; takes attendance for any class nobody has saved yet (substitute). A saved class stays with the person who saved it, the subject teacher and the HOD. Marks for their assessments; apply for own leave (HOD decides; common-pool teachers: admin). No parent messages |
+| HOD | Own department | Manage department subjects, timetables, faculty assignment; **adds the department's staff** (as faculty; can make them class teacher of a department class; can edit / reset / deactivate them, never senior roles); approve late edits; approve student leave choosing **present / excused / absent** for each notice; decide **teachers' own leave**; can enter or correct any marks in the department (no approval step); publish updates for the department or its classes; see compliance. Teaches own subjects like any teacher. Own leave is recorded without approval |
+| Faculty | Department + assigned subjects | **Attendance** opens on the department's day timetable grid (classes × periods, B1/B2 together, labs spanning their periods; on phones periods × classes) with who saved each class; takes attendance for any class nobody has saved yet (substitute). A saved class stays with the person who saved it, the subject teacher and the HOD. Marks for their assessments; apply for own leave (HOD decides; common-pool teachers: admin). No parent messages |
 | Class teacher | One class (dept + semester) | Everything faculty can + **My class** page (today's periods and who took them, classes not entered this week per teacher, marks entry status per test, shortage list), leave/OD entry for the class (also after the day, up to 30 days back; HOD approves), student/parent contact edits. Teaches own subjects like any teacher |
 | Parent | Own child(ren) | View attendance, marks, the college calendar and college updates; receive WhatsApp/SMS |
 
@@ -186,7 +186,7 @@ Confirmed by a lecturer (2026-11-01). Each semester has 5 subjects of three kind
 - Attendance does **not** add to marks.
 - Pass/fail, grades, SGPA/CGPA: **later**, once the college gives pass minimums, grade bands and credits.
 - Mark entry by the faculty assigned to the component (theory tests: theory teacher; practical tests: lab teacher; activity: theory teacher by default). Grid + roll-number entry, drafts kept on the device, version check like attendance.
-- Workflow: Draft → Submitted → Published (only published marks reach parents and trigger messages). Edit after publish needs HOD approval and is audited.
+- Workflow (decided 2026-11-07, no HOD approval): the subject teacher enters and saves (parents see nothing), then presses **Done – show to parents** once everyone has a mark, AB or MP; marks stay editable afterwards (parents see the correction, no new message; every change audited). HOD and admin can do the same.
 
 ---|---|---|
 | Integrated (main subjects) | 2 theory tests + 2 practical tests | Theory final + practical final |
@@ -198,7 +198,7 @@ Confirmed by a lecturer (2026-11-01). Each semester has 5 subjects of three kind
 - **SEE ownership: [OPEN].** If DTE conducts the finals, the college only enters results afterward. Pass/fail rules come from DTE.
 - Attendance does **not** add to marks (confirmed).
 - Mark values: number, `AB` (absent for test), `MP` (malpractice). Entry by faculty assigned to that component. Bulk entry grid + Excel upload.
-- Workflow: Draft → Submitted → Published (only published marks are visible to parents and trigger messages). Edit after publish needs HOD approval and is audited.
+- Workflow (decided 2026-11-07, no HOD approval): the subject teacher enters and saves (parents see nothing), then presses **Done – show to parents** once everyone has a mark, AB or MP; marks stay editable afterwards (parents see the correction, no new message; every change audited). HOD and admin can do the same.
 
 ---
 
@@ -213,7 +213,7 @@ Confirmed by a lecturer (2026-11-01). Each semester has 5 subjects of three kind
 | 3 | Attendance falls below eligibility (60%) | Once, on crossing | On |
 | 4 | Absent 3 consecutive working days | Next morning | **[OPEN]** On? |
 | 5 | Absent for a whole day | Evening (after lock) | **[OPEN]** Off (weekly only) |
-| 6 | Marks published | When HOD/faculty publishes | On |
+| 6 | Marks published | When the teacher presses Done – show to parents | On |
 | 7 | Low marks (below X% of max) | With #6 | On |
 | 8 | Exam schedule (CIE/SEE dates) | When announced + 1 day before | On |
 | 9 | Holiday / college notice broadcast | Manual by admin/principal | Manual |
@@ -360,13 +360,13 @@ Demo-ready after phases 0–4 + 6 (mock + test number).
 **Progress:** Phase 0 and 1 done (2026-10-31). Schema with DB-level checks, pure rule logic (attendance %, calendar, timetable, reg no, phone) with 62 unit tests, 14 database-constraint tests, deterministic dummy data seed, CI workflow, status page.
 
 **Progress:** Roles for the demo done (2026-11-03), on top of phase 10 work. Role redesign done (2026-11-07):
-principal view-only, HOD adds department staff and publishes department updates, Department today page for
+principal view-only, HOD adds department staff and publishes department updates, Attendance timetable grid for
 substitutes, class teacher's My class page, per-notice leave outcome (migration 0009).
 
 - Office role (calendar, college updates, students college-wide, all reports; no attendance or marks). Calendar editing moved to office + admin only.
 - Staff leave: apply (CL / medical / EL / OD / other, full or half day, up to 30 days back and 180 ahead), HOD decides teachers', principal decides HODs' and staff without a department, admin any, never your own (also a DB check). Overlapping open leave is refused by an exclusion constraint (half days FN / AN may share a date). Waiting and upcoming approved leave list the timetable classes that need a substitute.
 - College updates: published by office / principal / admin for the college, a department or a class; saved for the parent portal and sent on WhatsApp through the outbox (dedupe per update + number); can be withdrawn from the portal. Replaces the old "send a notice" form.
-- Dashboard: "needs your attention" per role, staff on leave today, per-department overview for principal / admin / office (attendance, students below the minimum, not entered, marks to publish, staff leave, HOD phone + WhatsApp).
+- Dashboard: "needs your attention" per role, staff on leave today, per-department overview for principal / admin / office (attendance, students below the minimum, not entered, tests being entered, staff leave, HOD phone + WhatsApp).
 - Parent portal: Updates and Calendar pages.
 - WhatsApp: clear messages for Meta's common errors (24-hour window, number not on the test list, expired token), admin "send a test WhatsApp", and real sending to every number is refused while the dummy data is loaded (`college_settings.demo_data`).
 - Subjects: one subject per (department, code), so shared courses like Maths 25SC11I exist once per department; import matches on department + code.
@@ -409,8 +409,8 @@ substitutes, class teacher's My class page, per-notice leave outcome (migration 
 
 - Three marks schemes as data (`assessment_scheme.formula`, `scheme_component`): main subject with theory final, main subject with practical final, minor (no final). Each subject picks one on the Subjects screen; it can't change once marks exist.
 - Calculation in `src/lib/domain/marks.ts` (exact, in hundredths): CIE = sum ÷ 250 × 50, final ÷ 2, total = both. Not entered ≠ 0: results show "so far" (*) until every part is in.
-- Entry: the part's teacher (theory tests + activity: theory teacher; practical tests: lab teacher); final exam: HOD/admin only. Whole-list save with version check, retry-safe id, browser draft. Test date required before submitting, never in the future.
-- Workflow: Draft → Submitted (teacher) → Published (HOD/admin). HOD can send back with a note, or reopen published marks with a recorded reason. Every save/status change is audited with the changed marks.
+- Entry: the part's teacher (theory tests + activity: theory teacher; practical tests: lab teacher); final exam: the same teacher (theory or lab); HOD and admin too. Whole-list save with version check, retry-safe id, browser draft. Test date required before submitting, never in the future.
+- Workflow (decided 2026-11-07, no HOD approval): the subject teacher enters and saves (parents see nothing), then presses **Done – show to parents** once everyone has a mark, AB or MP; marks stay editable afterwards (parents see the correction, no new message; every change audited). HOD and admin can do the same.
 - Publishing queues one message per student (in the same transaction): "marks published", or "low marks" when below the low-marks level in Settings. Includes internal marks so far. Reopen + republish does not message again.
 - Views: subject results (each test, CIE /50, final /50, total), class marks sheet, student page, Reports → Low marks.
 - Safety fix found while testing: a message with no text (e.g. a stale build that didn't know a message kind) is now impossible: rendering throws, the outbox refuses empty text (the publish rolls back), and the sender fails such a row instead of sending it.

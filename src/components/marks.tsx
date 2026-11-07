@@ -10,7 +10,7 @@ const CHIP: Record<Status | "NONE", string> = {
   SUBMITTED: "border-amber-300 bg-amber-50 text-amber-900",
   PUBLISHED: "border-green-300 bg-green-50 text-green-900",
 };
-const SHORT: Record<Status | "NONE", string> = { NONE: "not started", DRAFT: "draft", SUBMITTED: "with HOD", PUBLISHED: "published" };
+const SHORT: Record<Status | "NONE", string> = { NONE: "not started", DRAFT: "being entered", SUBMITTED: "being entered", PUBLISHED: "shown to parents" };
 
 /** A test of a subject, with its status; a link when the viewer can open it. */
 export function PartChip({ href, part, mine }: { href: string; part: { code: string; label: string; assessment: { status: Status; marked: number } | null }; mine: boolean }) {

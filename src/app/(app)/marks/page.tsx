@@ -2,7 +2,7 @@ import { sql } from "drizzle-orm";
 import Link from "next/link";
 import { PartChip } from "@/components/marks";
 import { Card, Empty, NoAccess, PageHeader, Table, Td, Th } from "@/components/ui";
-import { canEnterMarks, canPublishMarks, classTeacherClassIds, hodDepartmentIds, seesWholeCollege } from "@/lib/auth/permissions";
+import { canEnterMarks, classTeacherClassIds, hodDepartmentIds, seesWholeCollege } from "@/lib/auth/permissions";
 import { requireStaff } from "@/server/current";
 import { listOfferingMarks } from "@/server/marks-data";
 import { getCurrentTerm } from "@/server/queries";
@@ -29,7 +29,6 @@ export default async function MarksPage(props: PageProps<"/marks">) {
   const offerings = await listOfferingMarks(where);
   if (offerings.length === 0 && !wide) return <NoAccess what="marks (you don't teach any subject this term)" />;
 
-  const waiting = offerings.flatMap((o) => o.parts.filter((p) => p.assessment?.status === "SUBMITTED" && canPublishMarks(me.actor, o.classRef)).map((p) => ({ o, p })));
 
   return (
     <>
@@ -48,20 +47,6 @@ export default async function MarksPage(props: PageProps<"/marks">) {
             My subjects
           </Link>
         </div>
-      )}
-
-      {waiting.length > 0 && (
-        <Card title={`Waiting for you to publish (${waiting.length})`} className="mb-6">
-          <ul className="flex flex-wrap gap-2">
-            {waiting.map(({ o, p }) => (
-              <li key={p.assessment!.id}>
-                <Link href={`/marks/${o.offeringId}/${p.code}`} className="inline-block rounded border border-amber-300 bg-amber-50 px-2 py-1 text-sm text-amber-900 hover:bg-amber-100">
-                  {o.className} · {o.subject} · {p.label}
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </Card>
       )}
 
       <Card title={scope === "mine" ? "Your subjects" : "Subjects"}>
@@ -93,7 +78,7 @@ export default async function MarksPage(props: PageProps<"/marks">) {
                           key={p.code}
                           href={`/marks/${o.offeringId}/${p.code}`}
                           part={p}
-                          mine={canEnterMarks(me.actor, { classRef: o.classRef, isFinal: p.isFinal, assignedStaffIds: p.assignedStaffIds })}
+                          mine={canEnterMarks(me.actor, { classRef: o.classRef, assignedStaffIds: p.assignedStaffIds })}
                         />
                       ))}
                     </div>

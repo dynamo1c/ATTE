@@ -613,11 +613,11 @@ async function seed(tx: Tx, until: IsoDate) {
   // minor test 3 submitted, activity not entered yet. CS Sem 1 is complete including final exam marks,
   // so totals out of 100 can be demonstrated (dummy: the real finals come after the term).
   let markCount = 0;
-  type Plan = { code: string; heldOn: IsoDate; status: "DRAFT" | "SUBMITTED" | "PUBLISHED"; fill?: number };
+  type Plan = { code: string; heldOn: IsoDate; status: "DRAFT" | "PUBLISHED"; fill?: number };
   for (const c of classes) {
     const hod = hodOf.get(c.deptCode)!;
     const complete = c.deptCode === "CS" && c.semester === 1;
-    const pendingHod = c.deptCode === "CS" && c.semester === 3;
+    const notShownYet = c.deptCode === "CS" && c.semester === 3;
     for (const i of c.subjects.keys()) {
       const offeringId = c.offeringIds[i];
       const key = schemeFor(c.subjects, i);
@@ -628,14 +628,14 @@ async function seed(tx: Tx, until: IsoDate) {
           ? [
               { code: "CIE_T1", heldOn: "2026-09-22", status: "PUBLISHED" },
               { code: "CIE_T2", heldOn: "2026-10-15", status: "PUBLISHED" },
-              { code: "CIE_T3", heldOn: "2026-10-29", status: "SUBMITTED" },
+              { code: "CIE_T3", heldOn: "2026-10-29", status: "DRAFT" },
             ]
           : [
               { code: "CIE_T1", heldOn: "2026-09-22", status: "PUBLISHED" },
               { code: "CIE_P1", heldOn: "2026-09-22", status: "PUBLISHED" },
-              { code: "CIE_T2", heldOn: "2026-10-15", status: pendingHod ? "SUBMITTED" : "PUBLISHED" },
+              { code: "CIE_T2", heldOn: "2026-10-15", status: notShownYet ? "DRAFT" : "PUBLISHED" },
               // One subject's practical test 2 is half entered (a draft in progress).
-              { code: "CIE_P2", heldOn: "2026-10-15", status: pendingHod ? "DRAFT" : "PUBLISHED", fill: pendingHod && i === 0 ? 0.5 : pendingHod ? 0 : 1 },
+              { code: "CIE_P2", heldOn: "2026-10-15", status: notShownYet ? "DRAFT" : "PUBLISHED", fill: notShownYet && i === 0 ? 0.5 : notShownYet ? 0 : 1 },
             ];
       for (const p of plan) {
         if (p.heldOn > until) continue;

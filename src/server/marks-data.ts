@@ -214,7 +214,7 @@ export async function getClassMarks(classId: number, opts: { publishedOnly?: boo
   return { subjects, students };
 }
 
-export const STATUS_LABEL: Record<AssessmentStatus, string> = { DRAFT: "Draft", SUBMITTED: "Waiting for HOD", PUBLISHED: "Published" };
+export const STATUS_LABEL: Record<AssessmentStatus, string> = { DRAFT: "Being entered", SUBMITTED: "Being entered", PUBLISHED: "Shown to parents" };
 
 /** The assessment row for a part, created on first use (safe if two people open it at once). */
 export async function getOrCreateAssessment(offeringId: number, part: Pick<PartRef, "schemeComponentId" | "maxMarks">): Promise<number> {

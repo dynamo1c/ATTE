@@ -1,14 +1,14 @@
 import { notFound } from "next/navigation";
-import { ActionForm, Field, SubmitButton } from "@/components/action-form";
+import { ActionForm, SubmitButton } from "@/components/action-form";
 import { EntryCell, StatusPill } from "@/components/marks";
-import { Card, Empty, Input, NoAccess, PageHeader, Table, Td, Th } from "@/components/ui";
-import { canEnterMarks, canPublishMarks, canViewClass } from "@/lib/auth/permissions";
+import { Card, Empty, NoAccess, PageHeader, Table, Td, Th } from "@/components/ui";
+import { canEnterMarks, canViewClass } from "@/lib/auth/permissions";
 import { formatDateShort, todayIn } from "@/lib/domain/dates";
 import { formatEntry, formatMark } from "@/lib/domain/marks";
 import { requireStaff } from "@/server/current";
 import { getMarkRoster, getOfferingMarks, getOrCreateAssessment } from "@/server/marks-data";
 import { parseId } from "@/server/queries";
-import { publishMarks, reopenMarks, sendBackMarks, submitMarks } from "../../actions";
+import { publishMarks } from "../../actions";
 import { MarkEntry } from "./entry";
 
 export const metadata = { title: "Enter marks · MEI Attendance" };
@@ -22,8 +22,7 @@ export default async function MarkEntryPage(props: PageProps<"/marks/[offeringId
   if (!canViewClass(me.actor, ctx.classRef)) return <NoAccess what="this subject" />;
   let part = ctx.parts.find((p) => p.code === params.code);
   if (!part) notFound();
-  const canEdit = canEnterMarks(me.actor, { classRef: ctx.classRef, isFinal: part.isFinal, assignedStaffIds: part.assignedStaffIds });
-  const publisher = canPublishMarks(me.actor, ctx.classRef);
+  const canEdit = canEnterMarks(me.actor, { classRef: ctx.classRef, assignedStaffIds: part.assignedStaffIds });
 
   // First visit by someone who enters these marks: create the test row (safe if two people do it at once).
   if (!part.assessment && canEdit) {
@@ -38,20 +37,20 @@ export default async function MarkEntryPage(props: PageProps<"/marks/[offeringId
     return (
       <>
         <PageHeader title={title} back={back} />
-        <Empty>Not started yet. {part.isFinal ? "The HOD enters final exam marks." : `Entered by ${part.assignedNames ?? "the subject teacher"}.`}</Empty>
+        <Empty>Not started yet. Entered by {part.assignedNames ?? "the subject teacher"}.</Empty>
       </>
     );
   }
 
   const roster = await getMarkRoster(a.id, ctx.classRef.id, a.heldOn);
-  const editable = canEdit && (a.status === "DRAFT" || (a.status === "SUBMITTED" && publisher));
+  const editable = canEdit;
   const missing = roster.filter((r) => !r.former && !r.entry).length;
 
   return (
     <>
       <PageHeader
         title={title}
-        subtitle={`Out of ${formatMark(part.maxMarks)}${a.heldOn ? ` · held ${formatDateShort(a.heldOn)}` : ""} · ${part.isFinal ? "final exam, entered by HOD" : (part.assignedNames ?? "no teacher assigned")}`}
+        subtitle={`Out of ${formatMark(part.maxMarks)}${a.heldOn ? ` · held ${formatDateShort(a.heldOn)}` : ""} · ${part.isFinal ? "final exam · " : ""}${part.assignedNames ?? "no teacher assigned"}`}
         back={back}
         actions={<StatusPill status={a.status} />}
       />
@@ -59,57 +58,25 @@ export default async function MarkEntryPage(props: PageProps<"/marks/[offeringId
       {a.statusNote && <p className="mb-4 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-900">{a.statusNote}</p>}
 
       <div className="mb-4 flex flex-wrap items-start gap-2">
-        {canEdit && a.status === "DRAFT" && !publisher && (
-          <ActionForm action={submitMarks} confirm="Send these marks to the HOD? You can't change them after that unless the HOD sends them back.">
-            <input type="hidden" name="assessmentId" value={a.id} />
-            <input type="hidden" name="version" value={a.version} />
-            <SubmitButton variant="secondary" disabled={missing > 0} title={missing ? `${missing} students have no mark yet` : undefined}>
-              Submit to HOD
-            </SubmitButton>
-          </ActionForm>
-        )}
-        {publisher && (a.status === "DRAFT" || a.status === "SUBMITTED") && (
-          <ActionForm action={publishMarks} confirm="Publish these marks? Students' parents will be messaged.">
+        {canEdit && a.status !== "PUBLISHED" && (
+          <ActionForm action={publishMarks} confirm="All marks entered? Parents will see them on the portal and get a WhatsApp message. You can still correct marks afterwards.">
             <input type="hidden" name="assessmentId" value={a.id} />
             <input type="hidden" name="version" value={a.version} />
             <SubmitButton disabled={missing > 0} title={missing ? `${missing} students have no mark yet` : undefined}>
-              Publish
+              Done – show to parents
             </SubmitButton>
           </ActionForm>
         )}
-        {publisher && a.status === "SUBMITTED" && (
-          <details className="rounded-md border border-slate-200 bg-white px-3 py-1.5">
-            <summary className="cursor-pointer text-sm text-slate-700">Send back to teacher</summary>
-            <ActionForm action={sendBackMarks} className="mt-2 flex flex-wrap items-end gap-2">
-              <input type="hidden" name="assessmentId" value={a.id} />
-              <input type="hidden" name="version" value={a.version} />
-              <Field label="What needs fixing" name="note">
-                <Input id="note" name="note" className="w-64" />
-              </Field>
-              <SubmitButton size="sm" variant="secondary">
-                Send back
-              </SubmitButton>
-            </ActionForm>
-          </details>
-        )}
-        {publisher && a.status === "PUBLISHED" && (
-          <details className="rounded-md border border-slate-200 bg-white px-3 py-1.5">
-            <summary className="cursor-pointer text-sm text-slate-700">Reopen to correct</summary>
-            <ActionForm action={reopenMarks} className="mt-2 flex flex-wrap items-end gap-2">
-              <input type="hidden" name="assessmentId" value={a.id} />
-              <input type="hidden" name="version" value={a.version} />
-              <Field label="Reason (recorded)" name="note">
-                <Input id="note" name="note" className="w-64" placeholder="Re-evaluation of roll 12" />
-              </Field>
-              <SubmitButton size="sm" variant="danger">
-                Reopen
-              </SubmitButton>
-            </ActionForm>
-          </details>
-        )}
-        {missing > 0 && (canEdit || publisher) && a.status !== "PUBLISHED" && (
+        {canEdit && a.status !== "PUBLISHED" && (
           <span className="self-center text-sm text-slate-500">
-            {missing} student{missing === 1 ? "" : "s"} still without a mark — every student needs a mark, AB or MP before {publisher ? "publishing" : "submitting"}.
+            {missing > 0
+              ? `Save as often as you like; parents see nothing yet. ${missing} student${missing === 1 ? "" : "s"} still without a mark (enter a mark, AB or MP for everyone first).`
+              : "Saved marks stay private until you press Done."}
+          </span>
+        )}
+        {a.status === "PUBLISHED" && (
+          <span className="self-center text-sm text-slate-500">
+            Shown to parents.{canEdit ? " You can still correct a mark: save, and parents see the change (no new message)." : ""}
           </span>
         )}
       </div>
@@ -123,7 +90,7 @@ export default async function MarkEntryPage(props: PageProps<"/marks/[offeringId
           today={todayIn()}
         />
       ) : (
-        <Card title={a.status === "PUBLISHED" ? "Published marks" : a.status === "SUBMITTED" ? "Submitted — waiting for the HOD" : "Marks (read only)"}>
+        <Card title={a.status === "PUBLISHED" ? "Marks (shown to parents)" : "Marks (being entered, not shown to parents yet)"}>
           {roster.length === 0 ? (
             <Empty>No students.</Empty>
           ) : (

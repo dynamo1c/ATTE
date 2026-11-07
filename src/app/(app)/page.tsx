@@ -146,7 +146,7 @@ export default async function Dashboard() {
                 <Th className="text-right">Attendance</Th>
                 <Th className="text-right">Below {settings.attendanceMinPct}%</Th>
                 <Th className="text-right">Not entered</Th>
-                <Th className="text-right">Marks to publish</Th>
+                <Th className="text-right">Tests being entered</Th>
                 <Th className="text-right">Staff leave</Th>
               </tr>
             </thead>

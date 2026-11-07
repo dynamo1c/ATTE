@@ -17,7 +17,6 @@ import {
   canManageDepartment,
   canManageOutbox,
   canManageSettings,
-  canPublishMarks,
   canViewClass,
   canViewCompliance,
   canViewMessages,
@@ -69,7 +68,7 @@ describe("permissions", () => {
     expect(canPublishUpdates(p)).toBe(false);
     expect(canPublishUpdateTo(p, null)).toBe(false);
     expect(canApproveForClass(p, csSem3)).toBe(false);
-    expect(canPublishMarks(p, csSem3)).toBe(false);
+    expect(canEnterMarks(p, { classRef: csSem3, assignedStaffIds: [] })).toBe(false);
     expect(canManageOutbox(p)).toBe(false);
     expect(canAddStaff(p)).toBe(false);
     for (const applicant of [
@@ -91,8 +90,7 @@ describe("permissions", () => {
     expect(canMarkSession(office, { classRef: csSem3, assignedStaffIds: [] })).toBe(false);
     expect(canPublishUpdateTo(office, null)).toBe(true);
     expect(canViewClass(office, csSem3)).toBe(true); // sees marks and attendance, read only
-    expect(canEnterMarks(office, { classRef: csSem3, isFinal: false, assignedStaffIds: [] })).toBe(false);
-    expect(canPublishMarks(office, csSem3)).toBe(false);
+    expect(canEnterMarks(office, { classRef: csSem3, assignedStaffIds: [] })).toBe(false);
     expect(canViewAudit(office)).toBe(false);
     expect(canManageSettings(office)).toBe(false);
     const nav = labels(office);
@@ -166,8 +164,8 @@ describe("permissions", () => {
     expect(coverDepartmentIds(admin)).toBeNull();
     expect(coverDepartmentIds(principal)).toEqual([]);
     expect(coverDepartmentIds(office)).toEqual([]);
-    expect(labels(faculty)).toContain("Department today");
-    expect(labels(principal)).not.toContain("Department today");
+    expect(labels(faculty)).toContain("Attendance");
+    expect(labels(principal)).not.toContain("Attendance");
   });
 
   it("class teacher sees their class's status page; others of the department don't", () => {
@@ -240,17 +238,16 @@ describe("permissions", () => {
     expect(navFor(hodCs).map((n) => n.label)).not.toContain("Audit log");
   });
 
-  it("marks: part teacher enters CIE, only HOD/admin enter finals and publish", () => {
+  it("marks: the part's teacher enters every test (final exam too) and shows them to parents; also HOD and admin", () => {
     const teacher = { ...faculty, staffId: 42 };
     const otherTeacher = { ...faculty, staffId: 43 };
-    const part = (isFinal: boolean) => ({ classRef: csSem3, isFinal, assignedStaffIds: [42] });
-    expect(canEnterMarks(teacher, part(false))).toBe(true);
-    expect(canEnterMarks(teacher, part(true))).toBe(false);
-    expect(canEnterMarks(otherTeacher, part(false))).toBe(false);
-    expect(canEnterMarks(hodCs, part(true))).toBe(true);
-    expect(canEnterMarks(hodCs, { ...part(true), classRef: meSem3 })).toBe(false);
-    expect(canEnterMarks({ ...principal, staffId: 7 }, part(false))).toBe(false);
-    expect([admin, principal, hodCs, faculty].map((a) => canPublishMarks(a, csSem3))).toEqual([true, false, true, false]);
+    const part = { classRef: csSem3, assignedStaffIds: [42] };
+    expect(canEnterMarks(teacher, part)).toBe(true);
+    expect(canEnterMarks(otherTeacher, part)).toBe(false);
+    expect(canEnterMarks(hodCs, part)).toBe(true);
+    expect(canEnterMarks(hodCs, { ...part, classRef: meSem3 })).toBe(false);
+    expect(canEnterMarks(admin, part)).toBe(true);
+    expect(canEnterMarks({ ...principal, staffId: 7 }, part)).toBe(false);
   });
 
   it("only HOD, principal and admin see who has not entered attendance", () => {

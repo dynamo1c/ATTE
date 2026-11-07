@@ -31,10 +31,10 @@ While the dummy data is loaded, both sign-in pages list these: tap a role to fil
 | Role | Can do |
 |---|---|
 | Admin | Everything; staff accounts and roles, settings, message queue, audit log |
-| Principal | View only: every department's overview (attendance, shortage, not entered, marks waiting, staff leave, HOD phone / WhatsApp), every report, staff, messages, audit log. Approves and publishes nothing |
+| Principal | View only: every department's overview (attendance, shortage, not entered, tests being entered, staff leave, HOD phone / WhatsApp), every report, staff, messages, audit log. Approves and publishes nothing |
 | Office | College calendar (holidays, exams, events), college updates (WhatsApp + parent portal), student and parent-number edits for any class, every report including marks (read only). Own leave needs no approval |
-| HOD | Own department: timetable, subjects, teachers, students; adds its staff (as faculty, can make them class teacher); approves attendance changes, student leave (choosing present / excused / absent) and teachers' leave; publishes marks and the department's updates. Own leave needs no approval |
-| Teacher | **Department today**: every class of the department period by period, take any class nobody has saved (substitute); marks for own subjects; own leave (HOD decides) |
+| HOD | Own department: timetable, subjects, teachers, students; adds its staff (as faculty, can make them class teacher); approves attendance changes, student leave (choosing present / excused / absent) and teachers' leave; can enter or correct any marks in the department; publishes the department's updates. Own leave needs no approval |
+| Teacher | **Attendance** opens on the day's timetable of the whole department (classes by period, like the printed sheet); tap any class nobody has saved to take it (substitute); enters marks for own subjects (final exam too) and presses Done to show them to parents, no approval; own leave (HOD decides) |
 | Class teacher | Everything a teacher can, plus **My class**: today's periods and who took them, classes not entered this week per teacher, marks entry status, shortage list; student leave / OD for the class (HOD approves) |
 | Parent | Child's attendance, marks, college calendar and updates, after register number + mobile + one-time code | With the mock sender (`NOTIFY_PROVIDER=mock`) nothing is really sent, so the code is shown on screen in development, or in a production build when `PARENT_OTP_DEMO=yes`.
 
@@ -216,6 +216,6 @@ tests/db/                 Tests proving the database rejects bad data
 - Staff leave (approved, rejected, cancelled, today, waiting for the CS HOD and the principal) and college updates with their WhatsApp messages ("sent" by the mock).
 - Attendance from 17 Aug 2026 to today; last two days partly unmarked to show "pending".
 - One demo guardian number (90000 00001) linked to two siblings, for the parent portal.
-- Marks: tests 1 published, tests 2 mostly published (CS Sem 3 waiting for the HOD), activity not entered yet. **CS Sem 1 is complete, including dummy final exam marks**, to show totals out of 100.
+- Marks: tests 1 shown to parents, tests 2 mostly shown (CS Sem 3 still being entered), activity not entered yet. **CS Sem 1 is complete, including dummy final exam marks**, to show totals out of 100.
 - Edge cases: detained student `204CS25058` (in Sem 1), lateral entries `204CS26301–303`, mid-term joiner `204CS26061`, batch change `204CS25015`, dropout `204ME25044`.
 - Parent phone numbers are fake (`+918000…`). **Never point a live WhatsApp/SMS provider at dummy data.**

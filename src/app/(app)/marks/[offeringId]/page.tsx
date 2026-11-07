@@ -34,7 +34,7 @@ export default async function SubjectMarksPage(props: PageProps<"/marks/[offerin
       <Card title="Tests" className="mb-6">
         <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {ctx.parts.map((p) => {
-            const mine = canEnterMarks(me.actor, { classRef: ctx.classRef, isFinal: p.isFinal, assignedStaffIds: p.assignedStaffIds });
+            const mine = canEnterMarks(me.actor, { classRef: ctx.classRef, assignedStaffIds: p.assignedStaffIds });
             return (
               <li key={p.code} className="rounded-md border border-slate-200 p-3">
                 <div className="flex items-start justify-between gap-2">
@@ -44,7 +44,7 @@ export default async function SubjectMarksPage(props: PageProps<"/marks/[offerin
                       Out of {p.maxMarks}
                       {p.assessment?.heldOn && ` · ${formatDateShort(p.assessment.heldOn)}`}
                       {" · "}
-                      {p.isFinal ? "entered by HOD" : (p.assignedNames ?? "no teacher assigned")}
+                      {p.assignedNames ?? "no teacher assigned"}
                     </div>
                   </div>
                   <PartChip href={`/marks/${ctx.offeringId}/${p.code}`} part={p} mine={mine} />

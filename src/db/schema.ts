@@ -52,6 +52,7 @@ export const attendanceStatus = pgEnum("attendance_status", ["PRESENT", "ABSENT"
 export const leaveType = pgEnum("leave_type", ["MEDICAL", "ON_DUTY", "PERSONAL", "OTHER"]);
 export const leaveStatus = pgEnum("leave_status", ["PENDING", "APPROVED", "REJECTED"]);
 export const leaveCountsAs = pgEnum("leave_counts_as", ["PRESENT", "EXCUSED", "ABSENT"]);
+/** DRAFT = being entered (parents see nothing), PUBLISHED = shown to parents. SUBMITTED is no longer used (no HOD approval since 2026-11-07; refused by assessment_no_submitted). */
 export const assessmentStatus = pgEnum("assessment_status", ["DRAFT", "SUBMITTED", "PUBLISHED"]);
 export const markFlag = pgEnum("mark_flag", ["AB", "MP"]);
 export const staffLeaveType = pgEnum("staff_leave_type", ["CASUAL", "MEDICAL", "EARNED", "ON_DUTY", "OTHER"]);
@@ -683,7 +684,7 @@ export const assessment = pgTable(
     status: assessmentStatus("status").notNull().default("DRAFT"),
     publishedBy: integer("published_by").references(() => staff.id),
     publishedAt: timestamp("published_at", { withTimezone: true }),
-    /** Why it was sent back / reopened (shown to the teacher). */
+    /** Old: why marks were sent back / reopened. No longer written. */
     statusNote: text("status_note"),
     /** Optimistic lock: every save must send the version it read. */
     version: integer("version").notNull().default(0),
@@ -693,6 +694,7 @@ export const assessment = pgTable(
     unique("assessment_offering_component").on(t.offeringId, t.schemeComponentId),
     unique("assessment_id_max").on(t.id, t.maxMarks),
     check("assessment_max_positive", sql`${t.maxMarks} > 0`),
+    check("assessment_no_submitted", sql`${t.status} <> 'SUBMITTED'`),
     check("assessment_published", sql`${t.status} <> 'PUBLISHED' OR (${t.publishedBy} IS NOT NULL AND ${t.publishedAt} IS NOT NULL)`),
   ],
 );

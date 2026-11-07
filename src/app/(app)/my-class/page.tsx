@@ -15,8 +15,8 @@ export const metadata = { title: "My class · MEI Attendance" };
 
 const MARKS_STATUS: Record<NonNullable<MarksEntryRow["status"]>, { label: string; tone: "slate" | "amber" | "blue" | "green" }> = {
   DRAFT: { label: "Being entered", tone: "amber" },
-  SUBMITTED: { label: "With the HOD", tone: "blue" },
-  PUBLISHED: { label: "Published", tone: "green" },
+  SUBMITTED: { label: "Being entered", tone: "amber" },
+  PUBLISHED: { label: "Shown to parents", tone: "green" },
 };
 
 /**
@@ -52,7 +52,7 @@ export default async function MyClassPage(props: PageProps<"/my-class">) {
   const shortCount = short.filter((s) => s.standing === "SHORTAGE").length;
   const marksBySubject = new Map<string, MarksEntryRow[]>();
   for (const m of marks) marksBySubject.set(m.subject, [...(marksBySubject.get(m.subject) ?? []), m]);
-  const marksMissing = marks.filter((m) => !m.isFinal && m.status !== "PUBLISHED" && m.status !== "SUBMITTED" && m.entered < m.students).length;
+  const marksMissing = marks.filter((m) => !m.isFinal && m.status !== "PUBLISHED" && m.entered < m.students).length;
   const nowHHMM = new Date().toLocaleTimeString("en-GB", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit", hour12: false });
 
   return (

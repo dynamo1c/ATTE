@@ -35,7 +35,7 @@ export async function attentionFor(a: Actor, termId: number | null): Promise<Att
   if (termId !== null && (admin || depts.length)) {
     const {
       rows: [c],
-    } = await db.execute<{ student_leave: number; edit_requests: number; marks: number }>(sql`
+    } = await db.execute<{ student_leave: number; edit_requests: number }>(sql`
       SELECT
         (SELECT count(*)::int FROM leave_notice ln
            JOIN class_membership m ON m.student_id = ln.student_id AND m.term_id = ${termId}
@@ -45,14 +45,9 @@ export async function attentionFor(a: Actor, termId: number | null): Promise<Att
            JOIN class_session cs ON cs.id = r.session_id
            JOIN course_offering o ON o.id = cs.offering_id
            JOIN class_group cg ON cg.id = o.class_group_id
-           WHERE r.status = 'PENDING' AND ${deptScope}) AS edit_requests,
-        (SELECT count(*)::int FROM assessment a
-           JOIN course_offering o ON o.id = a.offering_id
-           JOIN class_group cg ON cg.id = o.class_group_id
-           WHERE a.status = 'SUBMITTED' AND cg.term_id = ${termId} AND ${deptScope}) AS marks`);
+           WHERE r.status = 'PENDING' AND ${deptScope}) AS edit_requests`);
     if (c.student_leave) out.push({ label: "Student leave / OD to approve", count: c.student_leave, href: "/leaves" });
     if (c.edit_requests) out.push({ label: "Attendance change requests", count: c.edit_requests, href: "/attendance/requests" });
-    if (c.marks) out.push({ label: "Marks submitted, waiting to be published", count: c.marks, href: "/marks" });
   }
 
   if (admin) {
@@ -82,6 +77,7 @@ export type DepartmentSummary = {
   /** Students whose overall attendance this term is below the college minimum. */
   belowMin: number;
   notEntered: number;
+  /** Tests with marks being entered, not shown to parents yet. */
   marksWaiting: number;
   staffOnLeaveToday: number;
   staffLeavePending: number;
@@ -115,7 +111,7 @@ export async function departmentOverview(termId: number, today: IsoDate, minPct:
     ),
     marks AS (
       SELECT cls.department_id, count(*)::int AS n FROM assessment a JOIN course_offering o ON o.id = a.offering_id JOIN cls ON cls.id = o.class_group_id
-      WHERE a.status = 'SUBMITTED' GROUP BY cls.department_id
+      WHERE a.status = 'DRAFT' AND EXISTS (SELECT 1 FROM mark mk WHERE mk.assessment_id = a.id) GROUP BY cls.department_id
     ),
     leave AS (
       SELECT s.department_id,

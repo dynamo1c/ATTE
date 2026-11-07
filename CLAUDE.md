@@ -49,10 +49,13 @@ dummy-data send guard (`providersFor`, `college_settings.demo_data`; always use 
 Courses are unique per (department, code). Seed has C-25 subjects (docs/c25-subjects.md).
 **Role redesign (2026-11-07, PLAN.md §3):** principal view-only; HOD adds own-department staff
 (`canManageStaffMember`, `canGrantRole`) and publishes own-department updates (`canPublishUpdateTo`);
-"Department today" (`/today`, `src/server/department-day.ts`): any faculty of the department takes an
+Attendance opens on the department's day timetable grid (`src/components/day-timetable.tsx`, layout in
+`src/lib/domain/day-grid.ts`, data `src/server/department-day.ts`; `/today` redirects there): any faculty takes an
 untaken class, a saved one stays with the saver / subject teacher / HOD (`canMarkSession` + `markedBy`, first
 saver kept); class teacher "My class" (`/my-class`, `src/server/class-status.ts`); the HOD picks how each
 student leave counts (`leave_notice.counts_as`, migration 0009; leave policy is only the suggestion).
+Marks have no approval step: the part's teacher (final exam too) saves, then "Done – show to parents"
+(`publishMarks`, status PUBLISHED) and can still correct; SUBMITTED is refused by `assessment_no_submitted` (migration 0010).
 WhatsApp: Twilio sender (`NOTIFY_PROVIDER=twilio`) and `NOTIFY_MONTHLY_LIMIT` exist; the Twilio trial sender
 only takes templates, so demos run on mock until the college's Meta business account is verified.
 Next the owner may ask for: principal ↔ HOD messaging (waiting on what the principal needs).
